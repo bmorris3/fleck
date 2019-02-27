@@ -56,5 +56,3 @@ distribute-*.tar.gz
 .pydevproject
 .settings
 
-# Mac OSX
-.DS_Store
