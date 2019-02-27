@@ -5,7 +5,7 @@ from astropy.coordinates import (CartesianRepresentation,
 from astropy.coordinates.matrix_utilities import rotation_matrix
 from scipy.integrate import quad
 
-__all__ = ['Stars']
+__all__ = ['Stars', 'generate_spots']
 
 
 def limb_darkening(u_ld, r):
@@ -84,3 +84,13 @@ class Stars(object):
         delta_f = (1 - np.sum(f_spots/self.f0, axis=1)).data
         return delta_f/delta_f.max(axis=0)
 
+
+def generate_spots(min_latitude, max_latitude, spot_radius, n_spots,
+                   n_inclinations):
+    delta_latitude = max_latitude - min_latitude
+    inc_stellar = (180*np.random.rand(n_inclinations) - 90) * u.deg
+    radii = spot_radius * np.ones((n_spots, n_inclinations))
+    lats = (delta_latitude*np.random.rand(n_spots, n_inclinations) +
+            min_latitude) * u.deg
+    lons = 360*np.random.rand(n_spots, n_inclinations) * u.deg
+    return lons, lats, radii, inc_stellar
