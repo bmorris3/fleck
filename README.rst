@@ -5,7 +5,7 @@ fleck
     :target: http://www.astropy.org
     :alt: Powered by Astropy Badge
 
-Fast starspot rotational modulation light curves in Python. For examples of use cases, see [the zeitsprung repository](https://github.com/bmorris3/zeitsprung).
+Fast starspot rotational modulation light curves in Python. For examples of use cases, see `the zeitsprung repository <https://github.com/bmorris3/zeitsprung>`_.
 
 
 License
