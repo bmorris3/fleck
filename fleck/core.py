@@ -45,7 +45,7 @@ class Stars(object):
                                 2 * np.pi / self.n_phases) * u.rad
         self.f0 = total_flux(u_ld)
 
-    def light_curve(self, spot_lons, spot_lats, spot_radii, inc_stellar):
+    def light_curves(self, spot_lons, spot_lats, spot_radii, inc_stellar):
         """
         Generate an ensemble of stellar rotational light curves.
 
@@ -82,13 +82,17 @@ class Stars(object):
                    np.sqrt(1 - r**2))
 
         delta_f = (1 - np.sum(f_spots/self.f0, axis=1)).data
-        return delta_f/delta_f.max(axis=0)
+        return delta_f
 
 
 def generate_spots(min_latitude, max_latitude, spot_radius, n_spots,
-                   n_inclinations):
+                   n_inclinations=None, inclinations=None):
     delta_latitude = max_latitude - min_latitude
-    inc_stellar = (180*np.random.rand(n_inclinations) - 90) * u.deg
+    if n_inclinations is not None and inclinations is None:
+        inc_stellar = (180*np.random.rand(n_inclinations) - 90) * u.deg
+    else:
+        n_inclinations = len(inclinations)
+        inc_stellar = inclinations
     radii = spot_radius * np.ones((n_spots, n_inclinations))
     lats = (delta_latitude*np.random.rand(n_spots, n_inclinations) +
             min_latitude) * u.deg
