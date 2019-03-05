@@ -5,6 +5,9 @@ fleck
     :target: http://www.astropy.org
     :alt: Powered by Astropy Badge
 
+.. image:: https://travis-ci.org/bmorris3/fleck.svg?branch=master
+    :target: https://travis-ci.org/bmorris3/fleck
+
 Fast starspot rotational modulation light curves in Python. For examples of use cases, see `the zeitsprung repository <https://github.com/bmorris3/zeitsprung>`_.
 
 
