@@ -26,7 +26,7 @@ def test_stsp():
 
     stars = Stars(spot_contrast, n_phases, u_ld)
     fleck_lc = stars.light_curves(lons * u.deg, lats * u.deg, rads,
-                                  inc_stellar * u.deg).value
+                                  inc_stellar * u.deg)
 
     # Assert matches STSP results to within 100 ppm:
     np.testing.assert_allclose(fleck_lc[:, 0], stsp_lc, atol=100e-6)

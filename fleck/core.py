@@ -73,9 +73,9 @@ class Stars(object):
         rotated_spot_positions = cartesian.transform(rotate)
         tilted_spot_positions = rotated_spot_positions.transform(tilt)
 
-        r = np.ma.masked_array(np.sqrt(tilted_spot_positions.y**2 +
-                                       tilted_spot_positions.z**2),
-                               mask=tilted_spot_positions.x < 0)
+        r = np.ma.masked_array(np.sqrt(tilted_spot_positions.y.value**2 +
+                                       tilted_spot_positions.z.value**2),
+                               mask=tilted_spot_positions.x.value < 0)
         ld = limb_darkening_normed(self.u_ld, r)
 
         f_spots = (np.pi * spot_radii**2 * (1 - self.spot_contrast) * ld *
