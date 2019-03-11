@@ -2,7 +2,7 @@ import numpy as np
 import os
 import astropy.units as u
 
-from ..core import Stars
+from ..core import Star
 
 
 def test_stsp():
@@ -10,7 +10,7 @@ def test_stsp():
     Compare fleck results to STSP results
     """
     stsp_lc = np.loadtxt(os.path.join(os.path.dirname(__file__), os.pardir,
-                                      'data', 'stsp.txt'))
+                                      'data', 'stsp_rotation.txt'))
 
     n_phases = 1000
     spot_contrast = 0.7
@@ -24,9 +24,9 @@ def test_stsp():
     lons = np.array([lon1, lon2])[:, np.newaxis]
     rads = np.array([rad1, rad2])[:, np.newaxis]
 
-    stars = Stars(spot_contrast, n_phases, u_ld)
-    fleck_lc = stars.light_curves(lons * u.deg, lats * u.deg, rads,
-                                  inc_stellar * u.deg)
+    star = Star(spot_contrast, u_ld, n_phases=n_phases)
+    fleck_lc = star.light_curve(lons * u.deg, lats * u.deg, rads,
+                                inc_stellar * u.deg)
 
     # Assert matches STSP results to within 100 ppm:
     np.testing.assert_allclose(fleck_lc[:, 0], stsp_lc, atol=100e-6)
