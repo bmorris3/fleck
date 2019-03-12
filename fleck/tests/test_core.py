@@ -64,6 +64,7 @@ def test_stsp_transit():
     # Assert matches STSP results to within 100 ppm:
     np.testing.assert_allclose(fleck_lc[:, 0], stsp_lc, atol=350e-6)
 
+
 def test_stsp_double_transit():
 
     planet = TransitParams()
