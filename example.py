@@ -14,10 +14,11 @@ max_latitude = 90   # deg
 
 lons, lats, radii, inc_stellar = generate_spots(min_latitude, max_latitude,
                                                 spot_radius, n_spots,
-                                                n_inclinations)
+                                                n_inclinations=n_inclinations)
 
 stars = Star(spot_contrast=spot_contrast, n_phases=n_phases, u_ld=u_ld)
 lcs = stars.light_curve(lons, lats, radii, inc_stellar)
+
 smoothed_amps = 100 * lcs.ptp(axis=0)
 
 fig, ax = plt.subplots(1, 2, figsize=(14, 4))

@@ -56,7 +56,7 @@ def test_stsp_transit():
 
     times = np.linspace(-0.5, 0.5, 500)
 
-    star = Star(spot_contrast=0.7, n_phases=30, u_ld=planet.u, rotation_period=100)
+    star = Star(spot_contrast=0.7, u_ld=planet.u, rotation_period=100)
 
     fleck_lc = star.light_curve(spot_lons, spot_lats, spot_radii,
                                 inc_stellar, planet=planet, times=times)

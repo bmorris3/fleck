@@ -12,16 +12,59 @@ __all__ = ['Star', 'generate_spots']
 
 
 def limb_darkening(u_ld, r):
+    """
+    Quadratic limb darkening function.
+
+    Parameters
+    ----------
+    u_ld : list
+        Quadratic limb-darkening parameters
+    r : float or `~numpy.ndarray`
+        Radius in units of stellar radii.
+
+    Returns
+    -------
+    f : float or `~numpy.ndarray`
+        Flux at ``r``.
+    """
     u1, u2 = u_ld
     mu = np.sqrt(1 - r**2)
     return (1 - u1 * (1 - mu) - u2 * (1 - mu)**2) / (1 - u1/3 - u2/6) / np.pi
 
 
 def limb_darkening_normed(u_ld, r):
+    """
+    Limb-darkened flux, normalized by the central flux.
+
+    Parameters
+    ----------
+    u_ld : list
+        Quadratic limb-darkening parameters
+    r : float or `~numpy.ndarray`
+        Radius in units of stellar radii.
+
+    Returns
+    -------
+    f : float or `~numpy.ndarray`
+        Normalized flux at ``r``
+    """
     return limb_darkening(u_ld, r)/limb_darkening(u_ld, 0)
 
 
 def total_flux(u_ld):
+    """
+    Compute the total flux of the limb-darkened star.
+
+    Parameters
+    ----------
+    u_ld : list
+        Quadratic limb-darkening parameters
+
+    Returns
+    -------
+    f : float
+        Total flux
+    """
     return 2 * np.pi * quad(lambda r: r * limb_darkening_normed(u_ld, r),
                             0, 1)[0]
 
@@ -71,10 +114,12 @@ class Star(object):
             Rotation period of the star
         """
         self.spot_contrast = spot_contrast
-        self.n_phases = n_phases if n_phases is not None else len(phases)
+        if phases is not None:
+            n_phases = len(phases)
+        self.n_phases = n_phases
         self.u_ld = u_ld
 
-        if phases is None:
+        if phases is None and self.n_phases is not None:
             phases = np.arange(0, 2 * np.pi, 2 * np.pi / self.n_phases) * u.rad
 
         self.phases = phases
@@ -86,6 +131,9 @@ class Star(object):
         """
         Generate an ensemble of light curves.
 
+        Light curve output will have shape ``(n_phases, len(inc_stellar))`` or
+        ``(len(times), len(inc_stellar))``.
+
         Parameters
         ----------
         spot_lons : `~numpy.ndarray`
@@ -96,13 +144,14 @@ class Star(object):
             Spot radii
         inc_stellar : `~numpy.ndarray`
             Stellar inclinations
-        planet : `~batman.TransitParams`
+        planet : `~batman-package.TransitParams`
             Transiting planet parameters
 
         Returns
         -------
         light_curves : `~numpy.ndarray`
-            Stellar light curves
+            Stellar light curves of shape ``(n_phases, len(inc_stellar))`` or
+            ``(len(times), len(inc_stellar))``
         """
         usr = UnitSphericalRepresentation(spot_lons, spot_lats)
         cartesian = usr.represent_as(CartesianRepresentation)
@@ -175,7 +224,6 @@ class Star(object):
                     spot_ld_factors.append(limb_darkening_normed(self.u_ld,
                                                                  r_spot))
 
-            print(spot_ld_factors)
             if len(spots) > 0:
                 intersections = np.zeros((len(f), len(spots)))
                 for i in range(len(f)):
@@ -193,6 +241,38 @@ class Star(object):
 
 def generate_spots(min_latitude, max_latitude, spot_radius, n_spots,
                    n_inclinations=None, inclinations=None):
+    """
+    Generate matrices of spot parameters.
+
+    Will generate ``n_spots`` spots on different stars observed at
+    ``n_inclinations`` different inclinations.
+
+    Parameters
+    ----------
+    min_latitude : float
+        Minimum spot latitude
+    max_latitude : float
+        Maximum spot latitude
+    spot_radius : float or `~numpy.ndarray`
+        Spot radii
+    n_spots : int
+        Number of spots to generate
+    n_inclinations : int, optional
+        Number of inclinations to generate
+    inclinations : `~numpy.ndarray`, optional
+        Inclinations (user defined). Default (`None`): randomly generate.
+
+    Returns
+    -------
+    lons : `~astropy.units.Quantity`
+        Spot longitudes, shape ``(n_spots, n_inclinations)``
+    lats : `~astropy.units.Quantity`
+        Spot latitudes, shape ``(n_spots, n_inclinations)``
+    radii : float or `~numpy.ndarray`
+        Spot radii, shape ``(n_spots, n_inclinations)``
+    inc_stellar : `~astropy.units.Quantity`
+        Stellar inclinations, shape ``(n_inclinations, )``
+    """
     delta_latitude = max_latitude - min_latitude
     if n_inclinations is not None and inclinations is None:
         inc_stellar = (180*np.random.rand(n_inclinations) - 90) * u.deg

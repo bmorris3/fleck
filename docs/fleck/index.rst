@@ -2,7 +2,7 @@
 fleck Documentation
 *******************
 
-This is the documentation for fleck.
+This is the API documentation for fleck.
 
 Reference/API
 =============
