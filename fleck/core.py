@@ -28,12 +28,26 @@ def total_flux(u_ld):
 
 def create_ellipse(center, lengths, angle=0):
     """
-    create a shapely ellipse
+    Create a shapely ellipse.
+
+    Parameters
+    ----------
+    center : list
+        [x, y] centroid of the ellipse
+    lengths : list
+        [a, b] semimajor and semiminor axes
+    angle : float
+        Angle in degrees to rotate the semimajor axis
+
+    Returns
+    -------
+    ellipse : `~shapely.geometry.polygon.Polygon`
+        Elliptical shapely object
     """
-    ellr = affinity.rotate(affinity.scale(Point(center).buffer(1),
-                                          lengths[0], lengths[1]),
-                           angle)
-    return ellr
+    ell = affinity.scale(Point(center).buffer(1),
+                         xfact=lengths[0], yfact=lengths[1])
+    ell_rotated = affinity.rotate(ell, angle=angle)
+    return ell_rotated
 
 
 class Star(object):
@@ -160,15 +174,19 @@ class Star(object):
                     spots.append(ellipse)
                     spot_ld_factors.append(limb_darkening_normed(self.u_ld,
                                                                  r_spot))
+
+            print(spot_ld_factors)
             if len(spots) > 0:
                 intersections = np.zeros((len(f), len(spots)))
                 for i in range(len(f)):
                     if planet_disk[i] is not None:
                         for j in range(len(spots)):
-                            intersections[i, j] = ((1 - self.spot_contrast) / spot_ld_factors[j] *
-                                                   planet_disk[i].intersection(spots[j]).area / np.pi)
+                            intersections[i, j] = ((1 - self.spot_contrast) /
+                                                   spot_ld_factors[j] *
+                                                   planet_disk[i].intersection(spots[j]).area /
+                                                   np.pi)
 
-                lambda_e -= intersections.sum(axis=1)[:, np.newaxis]
+                lambda_e -= intersections.max(axis=1)[:, np.newaxis]
 
         return 1 - np.sum(f_spots.filled(0)/self.f0, axis=1) - lambda_e
 

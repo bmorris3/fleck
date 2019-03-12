@@ -1,5 +1,5 @@
 import matplotlib.pyplot as plt
-from fleck import Stars, generate_spots
+from fleck import Star, generate_spots
 
 spot_contrast = 0.7
 u_ld = [0.5079, 0.2239]
@@ -16,7 +16,7 @@ lons, lats, radii, inc_stellar = generate_spots(min_latitude, max_latitude,
                                                 spot_radius, n_spots,
                                                 n_inclinations)
 
-stars = Stars(spot_contrast=spot_contrast, n_phases=n_phases, u_ld=u_ld)
+stars = Star(spot_contrast=spot_contrast, n_phases=n_phases, u_ld=u_ld)
 lcs = stars.light_curve(lons, lats, radii, inc_stellar)
 smoothed_amps = 100 * lcs.ptp(axis=0)
 
