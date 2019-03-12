@@ -47,7 +47,7 @@ def test_stsp_transit():
     planet.u = [0.5079, 0.2239]
 
     stsp_lc = np.loadtxt(os.path.join(os.path.dirname(__file__), os.pardir,
-                                      'data', 'stsp_transit.txt'))
+                                      'data', 'stsp_single_transit.txt'))
 
     inc_stellar = 90 * u.deg
     spot_radii = np.array([[0.1], [0.1]])
@@ -63,3 +63,35 @@ def test_stsp_transit():
 
     # Assert matches STSP results to within 100 ppm:
     np.testing.assert_allclose(fleck_lc[:, 0], stsp_lc, atol=350e-6)
+
+def test_stsp_double_transit():
+
+    planet = TransitParams()
+    planet.per = 88
+    planet.a = float(0.387*u.AU / u.R_sun)
+    planet.rp = 0.1
+    planet.w = 90
+    planet.ecc = 0
+    planet.inc = 90
+    planet.t0 = 0
+    planet.limb_dark = 'quadratic'
+    planet.u = [0.5079, 0.2239]
+
+    stsp_lc = np.loadtxt(os.path.join(os.path.dirname(__file__), os.pardir,
+                                      'data', 'stsp_double_transit.txt'))
+
+    inc_stellar = 90 * u.deg
+    spot_radii = np.array([[0.05], [0.05]])
+    spot_lats = np.array([[0], [0]]) * u.deg
+    spot_lons = np.array([[360-30], [30]]) * u.deg
+
+    times = np.concatenate([np.linspace(-0.5, 0.5, 500),
+                            np.linspace(87.5, 88.5, 500)])
+
+    star = Star(spot_contrast=0.7, u_ld=planet.u, rotation_period=10)
+
+    fleck_lc = star.light_curve(spot_lons, spot_lats, spot_radii,
+                                inc_stellar, planet=planet, times=times)
+
+    # Assert matches STSP results to within 100 ppm:
+    np.testing.assert_allclose(fleck_lc[:, 0], stsp_lc, atol=1e-3)
