@@ -93,6 +93,43 @@ def create_ellipse(center, lengths, angle=0):
     return ell_rotated
 
 
+def create_circle(center, radius):
+    """
+    Create a shapely ellipse.
+
+    Parameters
+    ----------
+    center : list
+        [x, y] centroid of the ellipse
+    radius : float
+        Radius of the circle
+
+    Returns
+    -------
+    circle : `~shapely.geometry.polygon.Polygon`
+        Circular shapely object
+    """
+    circle = affinity.scale(Point(center).buffer(1),
+                            xfact=radius, yfact=radius)
+    return circle
+
+
+def consecutive(data, stepsize=1):
+    """
+    Identify groups of consecutive integers.
+
+    Parameters
+    ----------
+    data
+    stepsize
+
+    Returns
+    -------
+
+    """
+    return np.split(data, np.where(np.diff(data) != stepsize)[0]+1)
+
+
 class Star(object):
     """
     Object describing properties of a population of stars
@@ -146,6 +183,8 @@ class Star(object):
             Stellar inclinations
         planet : `~batman-package.TransitParams`
             Transiting planet parameters
+        times : `~numpy.ndarray`
+            Times at which to compute the light curve
 
         Returns
         -------
@@ -164,12 +203,12 @@ class Star(object):
             rotate = rotation_matrix(rotational_phase[:, np.newaxis, np.newaxis],
                                      axis='z')
         tilt = rotation_matrix(inc_stellar - 90*u.deg, axis='y')
-        rotated_spot_positions = cartesian.transform(rotate)
-        tilted_spot_positions = rotated_spot_positions.transform(tilt)
+        rotated_spots = cartesian.transform(rotate)
+        tilted_spots = rotated_spots.transform(tilt)
 
-        r = np.ma.masked_array(np.sqrt(tilted_spot_positions.y.value**2 +
-                                       tilted_spot_positions.z.value**2),
-                               mask=tilted_spot_positions.x.value < 0)
+        r = np.ma.masked_array(np.hypot(tilted_spots.y.value,
+                                        tilted_spots.z.value),
+                               mask=tilted_spots.x.value < 0)
         ld = limb_darkening_normed(self.u_ld, r)
 
         f_spots = (np.pi * spot_radii**2 * (1 - self.spot_contrast) * ld *
@@ -179,8 +218,9 @@ class Star(object):
             lambda_e = np.zeros((len(self.phases), 1))
         else:
             if not inc_stellar.isscalar:
-                raise ValueError('Currently implemented for planets transiting '
-                                 'single stars. ')
+                raise ValueError('Transiting exoplanets are implemented for '
+                                 'planets transiting single stars only, but '
+                                 '``inc_stellar`` has multiple values. ')
             p = planet.rp
             n_spots = len(spot_lons)
             m = TransitModel(planet, times)
@@ -197,44 +237,55 @@ class Star(object):
                             np.cos(Omega) * np.sin(omega + f) * np.cos(I))
             Z = planet.a * np.sin(omega + f) * np.sin(I)
 
-            planet_disk = [create_ellipse([Y[i], Z[i]], [p, p])
+            planet_disk = [create_circle([Y[i], Z[i]], p)
                            if (np.abs(Y[i]) < 1 + p) and (X[i] < 0) else None
                            for i in range(len(f))]
 
-            spots = []
-            spot_ld_factors = []
+            t0_inds = np.argwhere((np.sign(Y[1:]) != np.sign(Y[:-1])) &
+                                  (Y[:-1] > 0))
 
-            mid_transit_time = len(times)//2
+            transit_ind_groups = consecutive(np.argwhere((X < 0) &
+                                                         (np.abs(Y) < 1))[:, 0])
 
-            for i in range(n_spots):
-                if tilted_spot_positions.x.value[mid_transit_time, i] > 0:
+            for k, t0_ind, transit_inds in zip(range(len(t0_inds)), t0_inds,
+                                               transit_ind_groups):
 
-                    r_spot = np.hypot(tilted_spot_positions.z.value[mid_transit_time, i],
-                                      tilted_spot_positions.y.value[mid_transit_time, i])
+                spots = []
+                spot_ld_factors = []
 
-                    angle = np.arctan2(tilted_spot_positions.z.value[mid_transit_time, i],
-                                       tilted_spot_positions.y.value[mid_transit_time, i])
+                for i in range(n_spots):
+                    if tilted_spots.x.value[t0_ind, i] > 0:
 
-                    ellipse = create_ellipse([tilted_spot_positions.y.value[mid_transit_time, i],
-                                              tilted_spot_positions.z.value[mid_transit_time, i]],
-                                             [spot_radii[i, 0]*np.sqrt(1 - r_spot**2),
-                                              spot_radii[i, 0]],
-                                             np.degrees(angle))
-                    spots.append(ellipse)
-                    spot_ld_factors.append(limb_darkening_normed(self.u_ld,
-                                                                 r_spot))
+                        r_spot = np.hypot(tilted_spots.z.value[t0_ind, i],
+                                          tilted_spots.y.value[t0_ind, i])
 
-            if len(spots) > 0:
-                intersections = np.zeros((len(f), len(spots)))
-                for i in range(len(f)):
-                    if planet_disk[i] is not None:
-                        for j in range(len(spots)):
-                            intersections[i, j] = ((1 - self.spot_contrast) /
-                                                   spot_ld_factors[j] *
-                                                   planet_disk[i].intersection(spots[j]).area /
-                                                   np.pi)
+                        angle = np.arctan2(tilted_spots.z.value[t0_ind, i],
+                                           tilted_spots.y.value[t0_ind, i])
 
-                lambda_e -= intersections.max(axis=1)[:, np.newaxis]
+                        ellipse_centroid = [tilted_spots.y.value[t0_ind, i],
+                                            tilted_spots.z.value[t0_ind, i]]
+
+                        ellipse_axes = [spot_radii[i, 0] *
+                                        np.sqrt(1 - r_spot**2),
+                                        spot_radii[i, 0]]
+
+                        ellipse = create_ellipse(ellipse_centroid, ellipse_axes,
+                                                 np.degrees(angle))
+                        spots.append(ellipse)
+                        spot_ld_factors.append(limb_darkening_normed(self.u_ld,
+                                                                     r_spot))
+
+                if len(spots) > 0:
+                    intersections = np.zeros((transit_inds.ptp()+1, len(spots)))
+                    for i in range(len(transit_inds)):
+                        planet_disk_i = planet_disk[transit_inds[i]]
+                        if planet_disk_i is not None:
+                            for j in range(len(spots)):
+                                intersections[i, j] = ((1 - self.spot_contrast) /
+                                                       spot_ld_factors[j] *
+                                                       planet_disk_i.intersection(spots[j]).area /
+                                                       np.pi)
+                    lambda_e[transit_inds] -= intersections.max(axis=1)[:, np.newaxis]
 
         return 1 - np.sum(f_spots.filled(0)/self.f0, axis=1) - lambda_e
 
