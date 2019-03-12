@@ -12,3 +12,4 @@ dependencies:
     - sphinx-astropy
     - pip:
        - batman-package
+       - shapely
