@@ -87,6 +87,7 @@ specify the parameters of the transiting exoplanet using the same specification
 used by `batman <https://github.com/lkreidberg/batman>`_::
 
     from batman import TransitParams
+    import astropy.units as u
 
     planet = TransitParams()
     planet.per = 88
@@ -102,7 +103,6 @@ used by `batman <https://github.com/lkreidberg/batman>`_::
 Let's now specify some spots on the stellar surface::
 
     import numpy as np
-    import astropy.units as u
 
     inc_stellar = 90 * u.deg
     spot_radii = np.array([[0.1], [0.1]])
