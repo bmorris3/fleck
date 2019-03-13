@@ -1,5 +1,6 @@
+*****
 fleck
------
+*****
 
 .. image:: https://travis-ci.org/bmorris3/fleck.svg?branch=master
     :target: https://travis-ci.org/bmorris3/fleck
