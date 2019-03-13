@@ -230,7 +230,7 @@ class Star(object):
 
             # Create a shapely circle object for the planet's silhouette only
             # when the planet is in front of the star, otherwise append `None`
-            planet_disk = [circle([Y[i], Z[i]], planet.rp)
+            planet_disk = [circle([Y[i], -Z[i]], planet.rp)
                            if (np.abs(Y[i]) < 1 + planet.rp) and
                               (X[i] < 0) else None
                            for i in range(len(f))]
@@ -317,6 +317,11 @@ class Star(object):
         the singular ``time`` rather than ``times``, plus ``ax`` for pre-defined
         matplotlib axes.
 
+        Coordinate frame is the "observer oriented" view defined in Fabrycky &
+        Winn (2011) Figure 1a. The planet transits from left to right across the
+        image. The dashed gray lines represent the upper and lower bounds of the
+        planet's transit chord.
+
         Parameters
         ----------
         spot_lons : `~astropy.units.Quantity`
@@ -373,13 +378,23 @@ class Star(object):
         b = (planet.a * np.cos(np.radians(planet.inc)) * (1 - planet.ecc**2) /
              (1 + planet.ecc * np.sin(np.radians(planet.w))))
 
+        # Compute the upper and lower envelopes of the transit chord in the
+        # "observer oriented" reference frame (Fabrycky & Winn 2009)
         planet_lower_extent = -b-planet.rp
         planet_upper_extent = -b+planet.rp
+
+        # Compute the position of the rotational pole of the star
+        pole_lat, pole_lon = np.array([90])*u.deg, np.array([0])*u.deg
+        polar_spot = self.spot_params_to_cartesian(pole_lon, pole_lat,
+                                                   inc_stellar,
+                                                   times=np.array([0]),
+                                                   planet=planet)
 
         # Draw the outline of the star:
         x = np.linspace(-1, 1, 1000)
         ax.plot(x, np.sqrt(1-x**2), color='k')
         ax.plot(x, -np.sqrt(1-x**2), color='k')
+        ax.scatter(-polar_spot.y, polar_spot.z, color='k', marker='x')
         ax.axhline(planet_lower_extent, color='gray', ls='--')
         ax.axhline(planet_upper_extent, color='gray', ls='--')
         ax.set(ylim=[-1, 1], xlim=[-1, 1], aspect=1)
@@ -447,7 +462,7 @@ class Star(object):
 
         # Generate array of rotation matrices to rotate the spots so that the
         # planet's orbit normal is tilted with respect to stellar spin
-        tilt = rotation_matrix(lam, axis='x')
+        tilt = rotation_matrix(-lam, axis='x')
         tilted_spots = inclined_spots.transform(tilt)
 
         return tilted_spots
