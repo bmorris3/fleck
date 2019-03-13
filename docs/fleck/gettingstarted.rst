@@ -164,3 +164,139 @@ Finally we can plot the transit light curve::
     plt.xlabel('Time [d]')
     plt.ylabel('Flux')
     plt.show()
+
+
+Plotting
+--------
+
+You can make quick plots for debugging and understanding a system's geometry
+using the `~fleck.Star.plot` method. For example, let's create a star observed
+at an odd angle, with a misaligned planet::
+
+    from batman import TransitParams
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import astropy.units as u
+    from fleck import Star
+
+    planet = TransitParams()
+    planet.per = 88
+    planet.a = float(0.387*u.AU / u.R_sun)
+    planet.rp = 0.1
+    planet.w = 90
+    planet.ecc = 0
+    planet.inc = 89.65
+    planet.t0 = 0
+    planet.limb_dark = 'quadratic'
+    planet.u = [0.5079, 0.2239]
+
+We define the angular offset between the planet's orbit normal and the spin the
+star projected onto the sky plane (often denoted :math:`\lambda`) using the
+extra planet parameter `planet.lam`, in units of degrees::
+
+    planet.lam = 45
+
+
+The stellar inclination (measured away from the sub-observer point) often
+denoted :math:`i_s` is defined::
+
+    inc_stellar = 70 * u.deg
+
+Let's create two spots along one line of longitude::
+
+    spot_radii = np.array([[0.1], [0.1]])
+    spot_lons = np.array([[0], [0]]) * u.deg
+    spot_lats = np.array([[25], [-25]]) * u.deg
+
+Let's now observe the system::
+
+    times = np.linspace(-0.5, 0.5, 500)
+
+    star = Star(spot_contrast=0.7, u_ld=planet.u, rotation_period=10)
+    ax = star.plot(spot_lons, spot_lats, spot_radii, inc_stellar, planet=planet,
+                   time=0)
+
+    plt.show()
+
+
+.. plot::
+
+    from batman import TransitParams
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import astropy.units as u
+    from fleck import Star
+
+    planet = TransitParams()
+    planet.per = 88
+    planet.a = float(0.387*u.AU / u.R_sun)
+    planet.rp = 0.1
+    planet.w = 90
+    planet.ecc = 0
+    planet.inc = 89.65
+    planet.t0 = 0
+    planet.limb_dark = 'quadratic'
+    planet.u = [0.5079, 0.2239]
+
+    planet.lam = 45
+
+    inc_stellar = 70 * u.deg
+
+    spot_radii = np.array([[0.1], [0.1]])
+    spot_lons = np.array([[0], [0]]) * u.deg
+    spot_lats = np.array([[25], [-25]]) * u.deg
+
+    star = Star(spot_contrast=0.7, u_ld=planet.u, rotation_period=10)
+    ax = star.plot(spot_lons, spot_lats, spot_radii, inc_stellar, planet=planet,
+                   time=0)
+
+    plt.show()
+
+The black `x` marks the location of the stellar rotational pole. Gray circles
+mark each starspot. The gray dashed lines represent the upper and lower bounds
+of the exoplanet's transit chord on the star. The planet transits from left to
+right across this coordinate system.
+
+We can plot the transit light curve and the system geometry on the same figure
+like so:
+
+.. plot::
+
+    from batman import TransitParams
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import astropy.units as u
+    from fleck import Star
+
+    planet = TransitParams()
+    planet.per = 88
+    planet.a = float(0.387*u.AU / u.R_sun)
+    planet.rp = 0.1
+    planet.w = 90
+    planet.ecc = 0
+    planet.inc = 89.65
+    planet.t0 = 0
+    planet.limb_dark = 'quadratic'
+    planet.u = [0.5079, 0.2239]
+
+    planet.lam = 45
+
+    inc_stellar = 70 * u.deg
+
+    spot_radii = np.array([[0.1], [0.1]])
+    spot_lons = np.array([[0], [0]]) * u.deg
+    spot_lats = np.array([[25], [-25]]) * u.deg
+
+    times = np.linspace(-0.5, 0.5, 500)
+
+    fig, ax = plt.subplots(1, 2, figsize=(8, 2.5))
+    star = Star(spot_contrast=0.7, u_ld=planet.u, rotation_period=10)
+    star.plot(spot_lons, spot_lats, spot_radii, inc_stellar, planet=planet,
+              time=0, ax=ax[0])
+    ax[0].set(xlabel="$\hat{X}$", ylabel="$\hat{Y}$")
+    lc = star.light_curve(spot_lons, spot_lats, spot_radii,
+                          inc_stellar, planet=planet, times=times)
+    ax[1].plot(times, lc, color='k')
+    ax[1].set(xlabel="Time [d]", ylabel="Flux")
+    fig.tight_layout()
+    plt.show()
