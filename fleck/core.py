@@ -7,6 +7,7 @@ from scipy.integrate import quad
 from shapely.geometry.point import Point
 from shapely import affinity
 from batman import TransitModel
+import matplotlib.pyplot as plt
 
 __all__ = ['Star', 'generate_spots']
 
@@ -183,30 +184,10 @@ class Star(object):
             Stellar light curves of shape ``(n_phases, len(inc_stellar))`` or
             ``(len(times), len(inc_stellar))``
         """
-        # Spots by default are given in unit spherical representation (lat, lon)
-        usr = UnitSphericalRepresentation(spot_lons, spot_lats)
-
-        # Represent those spots with cartesian coordinates (x, y, z)
-        # In this coordinate system, the observer is at positive x->inf,
-        # the star is at the origin, and (y, z) is the sky plane.
-        cartesian = usr.represent_as(CartesianRepresentation)
-
-        # Generate array of rotation matrices to rotate the spots about the
-        # stellar rotation axis
-        if times is None:
-            rotate = rotation_matrix(self.phases[:, np.newaxis, np.newaxis],
-                                     axis='z')
-        else:
-            rotational_phase = 2 * np.pi * ((times - planet.t0) /
-                                            self.rotation_period) * u.rad
-            rotate = rotation_matrix(rotational_phase[:, np.newaxis, np.newaxis],
-                                     axis='z')
-        rotated_spots = cartesian.transform(rotate)
-
-        # Generate array of rotation matrices to rotate the spots so that the
-        # star is observed from the correct stellar inclination
-        tilt = rotation_matrix(inc_stellar - 90*u.deg, axis='y')
-        tilted_spots = rotated_spots.transform(tilt)
+        # Compute the spot positions in cartesian coordinates:
+        tilted_spots = self.spot_params_to_cartesian(spot_lons, spot_lats,
+                                                     inc_stellar, times=times,
+                                                     planet=planet)
 
         # Compute the distance of each spot from the stellar centroid, mask
         # any spots that are "behind" the star, in other words, x < 0
@@ -220,6 +201,7 @@ class Star(object):
                    np.sqrt(1 - r**2))
 
         if planet is None:
+            # If there is no transiting planet, skip the transit routine:
             lambda_e = np.zeros((len(self.phases), 1))
         else:
             if not inc_stellar.isscalar:
@@ -256,8 +238,8 @@ class Star(object):
             # Find the approximate mid-transit time indices in the observations
             # by looking for the sign flip in Y (planet crosses the sub-observer
             # point) when also X < 0 (planet in front of star):
-            t0_inds = np.argwhere((np.sign(Y[1:]) != np.sign(Y[:-1])) &
-                                  (X[:-1] < 0))
+            t0_inds = np.argwhere((np.sign(Y[1:]) < np.sign(Y[:-1])) &
+                                  (X[1:] < 0))
 
             # Compute the indices where the planet is in front of the star
             # (X < 0) and the planet is near the star |Y| < 1 + p:
@@ -282,7 +264,7 @@ class Star(object):
                         spot_y = tilted_spots.y.value[t0_ind, i]
                         spot_z = tilted_spots.z.value[t0_ind, i]
 
-                        # Compute the spot position, ellipsoidal shape
+                        # Compute the spot position and ellipsoidal shape
                         r_spot = np.hypot(spot_z, spot_y)
                         angle = np.arctan2(spot_z, spot_y)
                         ellipse_centroid = [spot_y, spot_z]
@@ -291,11 +273,11 @@ class Star(object):
                                         np.sqrt(1 - r_spot**2),
                                         spot_radii[i, 0]]
 
-                        ellipse = ellipse(ellipse_centroid, ellipse_axes,
-                                          np.degrees(angle))
+                        spot = ellipse(ellipse_centroid, ellipse_axes,
+                                       np.degrees(angle))
 
                         # Add the spot to our spot list
-                        spots.append(ellipse)
+                        spots.append(spot)
                         spot_ld_factors.append(limb_darkening_normed(self.u_ld,
                                                                      r_spot))
 
@@ -311,17 +293,110 @@ class Star(object):
 
                                 # Compute the overlap between each spot and the
                                 # planet using shapely's `intersection` method
+                                spot_planet_overlap = planet_disk_i.intersection(spots[j]).area
+
                                 intersections[i, j] = ((1 - self.spot_contrast) /
                                                        spot_ld_factors[j] *
-                                                       planet_disk_i.intersection(spots[j]).area /
+                                                       spot_planet_overlap /
                                                        np.pi)
+
                     # Subtract the spot occultation amplitudes from the spotless
                     # transit model that we computed earlier
                     lambda_e[transit_inds] -= intersections.max(axis=1)[:, np.newaxis]
 
-        # Compute the flux missing from the star at each time due to spots
+        # Return the flux missing from the star at each time due to spots
         # (f_spots/self.f0) and due to the transit (lambda_e):
         return 1 - np.sum(f_spots.filled(0)/self.f0, axis=1) - lambda_e
+
+    def plot(self, spot_lons, spot_lats, spot_radii, inc_stellar, time=None,
+             planet=None, ax=None):
+        """
+        Generate a plot of the stellar surface at ``time``.
+
+        Parameters
+        ----------
+        spot_lons
+        spot_lats
+        spot_radii
+        inc_stellar
+        time :
+        times :
+        planet :
+        phase :
+        ax :
+
+        Returns
+        -------
+        ax : `~matplotlib.pyplot.Axes`
+            Axis object.
+        """
+        tilted_spots = self.spot_params_to_cartesian(spot_lons, spot_lats,
+                                                     inc_stellar,
+                                                     times=np.array([time]),
+                                                     planet=planet)
+        spots = []
+
+        for i in range(len(spot_lons)):
+            # If the spot is visible (x > 0):
+            if tilted_spots.x.value[0, i] > 0:
+                spot_y = tilted_spots.y.value[0, i]
+                spot_z = tilted_spots.z.value[0, i]
+
+                # Compute the spot position and ellipsoidal shape
+                r_spot = np.hypot(spot_z, spot_y)
+                angle = np.arctan2(spot_z, spot_y)
+                ellipse_centroid = [spot_y, spot_z]
+
+                ellipse_axes = [spot_radii[i, 0] *
+                                np.sqrt(1 - r_spot**2),
+                                spot_radii[i, 0]]
+
+                spot = ellipse(ellipse_centroid, ellipse_axes,
+                               np.degrees(angle))
+
+                # Add the spot to our spot list
+                spots.append(spot)
+        if ax is None:
+            ax = plt.gca()
+        # x, y = np.mgrid[:n, :n]
+        x = np.linspace(-1, 1, 100)
+        ax.plot(x, np.sqrt(1-x**2), color='k')
+        ax.plot(x, -np.sqrt(1-x**2), color='k')
+        ax.set(ylim=[-1, 1], xlim=[-1, 1], aspect=1)
+        for i in range(len(spots)):
+            x, y = [np.array(j.tolist()) for j in spots[i].exterior.xy]
+            ax.fill(-x, -y, alpha=1-self.spot_contrast,
+                    color='k')
+        return ax
+
+    def spot_params_to_cartesian(self, spot_lons, spot_lats, inc_stellar,
+                                 times=None, planet=None):
+        # Spots by default are given in unit spherical representation (lat, lon)
+        usr = UnitSphericalRepresentation(spot_lons, spot_lats)
+
+        # Represent those spots with cartesian coordinates (x, y, z)
+        # In this coordinate system, the observer is at positive x->inf,
+        # the star is at the origin, and (y, z) is the sky plane.
+        cartesian = usr.represent_as(CartesianRepresentation)
+
+        # Generate array of rotation matrices to rotate the spots about the
+        # stellar rotation axis
+        if times is None:
+            rotate = rotation_matrix(self.phases[:, np.newaxis, np.newaxis],
+                                     axis='z')
+        else:
+            rotational_phase = 2 * np.pi * ((times - planet.t0) /
+                                            self.rotation_period) * u.rad
+            rotate = rotation_matrix(rotational_phase[:, np.newaxis, np.newaxis],
+                                     axis='z')
+
+        rotated_spots = cartesian.transform(rotate)
+
+        # Generate array of rotation matrices to rotate the spots so that the
+        # star is observed from the correct stellar inclination
+        tilt = rotation_matrix(inc_stellar - 90*u.deg, axis='y')
+        tilted_spots = rotated_spots.transform(tilt)
+        return tilted_spots
 
 
 def generate_spots(min_latitude, max_latitude, spot_radius, n_spots,
