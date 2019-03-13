@@ -23,5 +23,5 @@ Dependencies
 
 To install the requirements for ``fleck``, run::
 
-    pip install numpy scipy astropy shapely batman-package
+    pip install numpy scipy astropy shapely batman-package matplotlib
 

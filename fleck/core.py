@@ -173,7 +173,7 @@ class Star(object):
             Spot radii
         inc_stellar : `~numpy.ndarray`
             Stellar inclinations
-        planet : `batman.TransitParams`
+        planet : `~batman.TransitParams`
             Transiting planet parameters
         times : `~numpy.ndarray`
             Times at which to compute the light curve
@@ -313,17 +313,26 @@ class Star(object):
         """
         Generate a plot of the stellar surface at ``time``.
 
+        Takes the same arguments as `~fleck.light_curve` with the exception of
+        the singular ``time`` rather than ``times``, plus ``ax`` for pre-defined
+        matplotlib axes.
+
         Parameters
         ----------
-        spot_lons
-        spot_lats
-        spot_radii
-        inc_stellar
-        time :
-        times :
-        planet :
-        phase :
-        ax :
+        spot_lons : `~astropy.units.Quantity`
+            Spot longitudes
+        spot_lats : `~astropy.units.Quantity`
+            Spot latitudes
+        spot_radii : `~numpy.ndarray`
+            Spot radii
+        inc_stellar : `~astropy.units.Quantity`
+            Stellar inclination
+        time : float
+            Time at which to evaluate the spot parameters
+        planet : `~batman.TransitParams`
+            Planet parameters
+        ax : `~matplotlib.pyplot.Axes`, optional
+            Predefined matplotlib axes
 
         Returns
         -------
@@ -356,13 +365,26 @@ class Star(object):
 
                 # Add the spot to our spot list
                 spots.append(spot)
+
         if ax is None:
             ax = plt.gca()
-        # x, y = np.mgrid[:n, :n]
-        x = np.linspace(-1, 1, 100)
+
+        # Calculate impact parameter
+        b = (planet.a * np.cos(np.radians(planet.inc)) * (1 - planet.ecc**2) /
+             (1 + planet.ecc * np.sin(np.radians(planet.w))))
+
+        planet_lower_extent = -b-planet.rp
+        planet_upper_extent = -b+planet.rp
+
+        # Draw the outline of the star:
+        x = np.linspace(-1, 1, 1000)
         ax.plot(x, np.sqrt(1-x**2), color='k')
         ax.plot(x, -np.sqrt(1-x**2), color='k')
+        ax.axhline(planet_lower_extent, color='gray', ls='--')
+        ax.axhline(planet_upper_extent, color='gray', ls='--')
         ax.set(ylim=[-1, 1], xlim=[-1, 1], aspect=1)
+
+        # Draw each starspot:
         for i in range(len(spots)):
             x, y = [np.array(j.tolist()) for j in spots[i].exterior.xy]
             ax.fill(-x, -y, alpha=1-self.spot_contrast,
@@ -371,6 +393,27 @@ class Star(object):
 
     def spot_params_to_cartesian(self, spot_lons, spot_lats, inc_stellar,
                                  times=None, planet=None):
+        """
+        Convert spot parameter matrices in the original stellar coordinates to
+        rotated and tilted cartesian coordinates.
+
+        Parameters
+        ----------
+        spot_lons : `~astropy.units.Quantity`
+            Spot longitudes
+        spot_lats : `~astropy.units.Quantity`
+            Spot latitudes
+        inc_stellar : `~astropy.units.Quantity`
+            Stellar inclination
+        times : `~numpy.ndarray`
+            Times at which evaluate the stellar rotation
+        planet : `~batman.TransitParams`
+            Planet parameters
+        Returns
+        -------
+        tilted_spots : `~numpy.ndarray`
+            Rotated and tilted spot positions in cartesian coordinates
+        """
         # Spots by default are given in unit spherical representation (lat, lon)
         usr = UnitSphericalRepresentation(spot_lons, spot_lats)
 
@@ -392,10 +435,21 @@ class Star(object):
 
         rotated_spots = cartesian.transform(rotate)
 
+        if planet is not None and hasattr(planet, 'lam'):
+            lam = planet.lam * u.deg
+        else:
+            lam = 0 * u.deg
+
         # Generate array of rotation matrices to rotate the spots so that the
         # star is observed from the correct stellar inclination
-        tilt = rotation_matrix(inc_stellar - 90*u.deg, axis='y')
-        tilted_spots = rotated_spots.transform(tilt)
+        stellar_inclination = rotation_matrix(inc_stellar - 90*u.deg, axis='y')
+        inclined_spots = rotated_spots.transform(stellar_inclination)
+
+        # Generate array of rotation matrices to rotate the spots so that the
+        # planet's orbit normal is tilted with respect to stellar spin
+        tilt = rotation_matrix(lam, axis='x')
+        tilted_spots = inclined_spots.transform(tilt)
+
         return tilted_spots
 
 
