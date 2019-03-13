@@ -387,7 +387,7 @@ class Star(object):
         # Draw each starspot:
         for i in range(len(spots)):
             x, y = [np.array(j.tolist()) for j in spots[i].exterior.xy]
-            ax.fill(-x, -y, alpha=1-self.spot_contrast,
+            ax.fill(-x, y, alpha=1-self.spot_contrast,
                     color='k')
         return ax
 
