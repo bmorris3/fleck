@@ -252,10 +252,11 @@ Let's now observe the system::
 
     plt.show()
 
-The black `x` marks the location of the stellar rotational pole. Gray circles
-mark each starspot. The gray dashed lines represent the upper and lower bounds
-of the exoplanet's transit chord on the star. The planet transits from left to
-right across this coordinate system.
+The black `x` marks the location of the stellar rotational pole. Gray ellipses
+mark each starspot. The horizontal gray dashed lines represent the upper and
+lower bounds of the exoplanet's transit chord over the star. The planet transits
+from left to right across this coordinate system. The stellar equator is marked
+with a dotted gray line.
 
 We can plot the transit light curve and the system geometry on the same figure
 like so:

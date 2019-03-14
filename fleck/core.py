@@ -3,11 +3,13 @@ import astropy.units as u
 from astropy.coordinates import (CartesianRepresentation,
                                  UnitSphericalRepresentation)
 from astropy.coordinates.matrix_utilities import rotation_matrix
+from scipy.spatial.distance import pdist, squareform
 from scipy.integrate import quad
 from shapely.geometry.point import Point
 from shapely import affinity
 from batman import TransitModel
 import matplotlib.pyplot as plt
+
 
 __all__ = ['Star', 'generate_spots']
 
@@ -122,6 +124,35 @@ def consecutive(data, step_size=1):
     return np.split(data, np.where(np.diff(data) != step_size)[0]+1)
 
 
+def sort_plot_points(xy_coord, k0=0):
+    """
+    Iteratively identify a continuous path from the given points xy_coord,
+    starting by the point indexes by k0
+    """
+    n = len(xy_coord)
+    distance_matrix = squareform(pdist(xy_coord, metric='euclidean'))
+    mask = np.ones(n, dtype='bool')
+    sorted_order = np.zeros(n, dtype=np.int)
+    indices = np.arange(n)
+
+    i = 0
+    k = k0
+    while True:
+        sorted_order[i] = k
+        mask[k] = False
+
+        dist_k = distance_matrix[k][mask]
+        indices_k = indices[mask]
+
+        if not len(indices_k):
+            break
+
+        # find next unused closest point
+        k = indices_k[np.argmin(dist_k)]
+        i += 1
+    return sorted_order
+
+
 class Star(object):
     """
     Object describing properties of a (population of) star(s)
@@ -185,9 +216,9 @@ class Star(object):
             ``(len(times), len(inc_stellar))``
         """
         # Compute the spot positions in cartesian coordinates:
-        tilted_spots = self.spot_params_to_cartesian(spot_lons, spot_lats,
-                                                     inc_stellar, times=times,
-                                                     planet=planet)
+        tilted_spots = self.spherical_to_cartesian(spot_lons, spot_lats,
+                                                   inc_stellar, times=times,
+                                                   planet=planet)
 
         # Compute the distance of each spot from the stellar centroid, mask
         # any spots that are "behind" the star, in other words, x < 0
@@ -313,12 +344,12 @@ class Star(object):
         """
         Generate a plot of the stellar surface at ``time``.
 
-        Takes the same arguments as `~fleck.light_curve` with the exception of
-        the singular ``time`` rather than ``times``, plus ``ax`` for pre-defined
-        matplotlib axes.
+        Takes the same arguments as `~fleck.Star.light_curve` with the exception
+        of the singular ``time`` rather than ``times``, plus ``ax`` for
+        pre-defined matplotlib axes.
 
         Coordinate frame is the "observer oriented" view defined in Fabrycky &
-        Winn (2011) Figure 1a. The planet transits from left to right across the
+        Winn (2009) Figure 1a. The planet transits from left to right across the
         image. The dashed gray lines represent the upper and lower bounds of the
         planet's transit chord.
 
@@ -344,10 +375,10 @@ class Star(object):
         ax : `~matplotlib.pyplot.Axes`
             Axis object.
         """
-        tilted_spots = self.spot_params_to_cartesian(spot_lons, spot_lats,
-                                                     inc_stellar,
-                                                     times=np.array([time]),
-                                                     planet=planet)
+        tilted_spots = self.spherical_to_cartesian(spot_lons, spot_lats,
+                                                   inc_stellar,
+                                                   times=np.array([time]),
+                                                   planet=planet)
         spots = []
 
         for i in range(len(spot_lons)):
@@ -385,19 +416,39 @@ class Star(object):
 
         # Compute the position of the rotational pole of the star
         pole_lat, pole_lon = np.array([90])*u.deg, np.array([0])*u.deg
-        polar_spot = self.spot_params_to_cartesian(pole_lon, pole_lat,
-                                                   inc_stellar,
-                                                   times=np.array([0]),
-                                                   planet=planet)
+        polar_spot = self.spherical_to_cartesian(pole_lon, pole_lat,
+                                                 inc_stellar,
+                                                 times=np.array([0]),
+                                                 planet=planet)
+
+        equator_lon = np.linspace(0, 2*np.pi, 50) * u.rad
+        equator_lat = np.zeros(len(equator_lon)) * u.rad
+        equatorial_line = self.spherical_to_cartesian(equator_lon, equator_lat,
+                                                      inc_stellar,
+                                                      times=np.array([time]),
+                                                      planet=planet)
 
         # Draw the outline of the star:
         x = np.linspace(-1, 1, 1000)
         ax.plot(x, np.sqrt(1-x**2), color='k')
         ax.plot(x, -np.sqrt(1-x**2), color='k')
-        ax.scatter(-polar_spot.y, polar_spot.z, color='k', marker='x')
+
+        # If pole is visible, mark it:
+        if polar_spot.x > 0:
+            ax.scatter(-polar_spot.y, polar_spot.z, color='k', marker='x')
+
+        # Where equator is visible, mark it:
+        equator_visible = equatorial_line.x > 0
+        xy = np.vstack([-equatorial_line.y[equator_visible],
+                        equatorial_line.z[equator_visible]]).T
+        sort_equator = sort_plot_points(xy, k0=np.argmax(xy[:, 1]))
+        ax.plot(-equatorial_line.y[equator_visible][sort_equator],
+                equatorial_line.z[equator_visible][sort_equator],
+                ls=':', color='gray')
+
         ax.axhline(planet_lower_extent, color='gray', ls='--')
         ax.axhline(planet_upper_extent, color='gray', ls='--')
-        ax.set(ylim=[-1, 1], xlim=[-1, 1], aspect=1)
+        ax.set(ylim=[-1.01, 1.01], xlim=[-1.01, 1.01], aspect=1)
 
         # Draw each starspot:
         for i in range(len(spots)):
@@ -406,8 +457,8 @@ class Star(object):
                     color='k')
         return ax
 
-    def spot_params_to_cartesian(self, spot_lons, spot_lats, inc_stellar,
-                                 times=None, planet=None):
+    def spherical_to_cartesian(self, spot_lons, spot_lats, inc_stellar,
+                               times=None, planet=None):
         """
         Convert spot parameter matrices in the original stellar coordinates to
         rotated and tilted cartesian coordinates.
@@ -424,6 +475,7 @@ class Star(object):
             Times at which evaluate the stellar rotation
         planet : `~batman.TransitParams`
             Planet parameters
+
         Returns
         -------
         tilted_spots : `~numpy.ndarray`
