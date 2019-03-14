@@ -2,11 +2,16 @@ import numpy as np
 import os
 import astropy.units as u
 from batman import TransitParams
+import pytest
 
 from ..core import Star
 
 
-def test_stsp_rotational_modulation():
+@pytest.mark.parametrize("fast,", [
+    ("True", ),
+    ("False", ),
+])
+def test_stsp_rotational_modulation(fast):
     """
     Compare fleck results to STSP results
     """
@@ -27,13 +32,17 @@ def test_stsp_rotational_modulation():
 
     star = Star(spot_contrast, u_ld, n_phases=n_phases)
     fleck_lc = star.light_curve(lons * u.deg, lats * u.deg, rads,
-                                inc_stellar * u.deg)
+                                inc_stellar * u.deg, fast=fast)
 
     # Assert matches STSP results to within 100 ppm:
     np.testing.assert_allclose(fleck_lc[:, 0], stsp_lc, atol=100e-6)
 
 
-def test_stsp_transit():
+@pytest.mark.parametrize("fast,", [
+    ("True", ),
+    ("False", ),
+])
+def test_stsp_transit(fast):
 
     planet = TransitParams()
     planet.per = 88
@@ -59,13 +68,18 @@ def test_stsp_transit():
     star = Star(spot_contrast=0.7, u_ld=planet.u, rotation_period=100)
 
     fleck_lc = star.light_curve(spot_lons, spot_lats, spot_radii,
-                                inc_stellar, planet=planet, times=times)
+                                inc_stellar, planet=planet, times=times,
+                                fast=fast)
 
     # Assert matches STSP results to within 100 ppm:
     np.testing.assert_allclose(fleck_lc[:, 0], stsp_lc, atol=350e-6)
 
 
-def test_stsp_double_transit():
+@pytest.mark.parametrize("fast,", [
+    ("True", ),
+    ("False", ),
+])
+def test_stsp_double_transit(fast):
 
     planet = TransitParams()
     planet.per = 88
@@ -92,7 +106,8 @@ def test_stsp_double_transit():
     star = Star(spot_contrast=0.7, u_ld=planet.u, rotation_period=10)
 
     fleck_lc = star.light_curve(spot_lons, spot_lats, spot_radii,
-                                inc_stellar, planet=planet, times=times)
+                                inc_stellar, planet=planet, times=times,
+                                fast=fast)
 
     # Assert matches STSP results to within 100 ppm:
     np.testing.assert_allclose(fleck_lc[:, 0], stsp_lc, atol=1e-3)

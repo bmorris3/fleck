@@ -127,7 +127,7 @@ def consecutive(data, step_size=1):
 def sort_plot_points(xy_coord, k0=0):
     """
     Iteratively identify a continuous path from the given points xy_coord,
-    starting by the point indexes by k0
+    starting by the point indexed by k0
     """
     n = len(xy_coord)
     distance_matrix = squareform(pdist(xy_coord, metric='euclidean'))
@@ -187,7 +187,7 @@ class Star(object):
         self.rotation_period = rotation_period
 
     def light_curve(self, spot_lons, spot_lats, spot_radii, inc_stellar,
-                    planet=None, times=None):
+                    planet=None, times=None, fast=True):
         """
         Generate a(n ensemble of) light curve(s).
 
@@ -204,10 +204,15 @@ class Star(object):
             Spot radii
         inc_stellar : `~numpy.ndarray`
             Stellar inclinations
-        planet : `~batman.TransitParams`
+        planet : `~batman.TransitParams`, optional
             Transiting planet parameters
-        times : `~numpy.ndarray`
+        times : `~numpy.ndarray`, optional
             Times at which to compute the light curve
+        fast : bool, optional
+            When `True`, use approximation that spots are fixed on the star
+            during a transit event. When `False`, account for motion of
+            starspots on stellar surface due to rotation during transit event.
+            Default is `True`.
 
         Returns
         -------
@@ -266,34 +271,170 @@ class Star(object):
                               (X[i] < 0) else None
                            for i in range(len(f))]
 
-            # Find the approximate mid-transit time indices in the observations
-            # by looking for the sign flip in Y (planet crosses the sub-observer
-            # point) when also X < 0 (planet in front of star):
-            t0_inds = np.argwhere((np.sign(Y[1:]) < np.sign(Y[:-1])) &
-                                  (X[1:] < 0))
+            if fast:
+                self._planet_spot_overlap_fast(planet, planet_disk,
+                                               tilted_spots, spot_radii,
+                                               n_spots, X, Y, lambda_e)
+            else:
+                self._planet_spot_overlap_slow(planet, planet_disk,
+                                               tilted_spots, spot_radii,
+                                               n_spots, X, Y, lambda_e)
 
-            # Compute the indices where the planet is in front of the star
-            # (X < 0) and the planet is near the star |Y| < 1 + p:
-            transit_inds_all = np.argwhere((X < 0) &
-                                           (np.abs(Y) < 1 + planet.rp))[:, 0]
+        # Return the flux missing from the star at each time due to spots
+        # (f_spots/self.f0) and due to the transit (lambda_e):
+        return 1 - np.sum(f_spots.filled(0)/self.f0, axis=1) - lambda_e
 
-            # Split these indices up into separate numpy arrays for each
-            # contiguous group - this will generate a list of numpy arrays each
-            # containing the indices during individual transit events.
-            transit_inds_groups = consecutive(transit_inds_all)
+    def spherical_to_cartesian(self, spot_lons, spot_lats, inc_stellar,
+                               times=None, planet=None):
+        """
+        Convert spot parameter matrices in the original stellar coordinates to
+        rotated and tilted cartesian coordinates.
 
-            # For each transit in the observations:
-            for k, t0_ind, transit_inds in zip(range(len(t0_inds)), t0_inds,
-                                               transit_inds_groups):
+        Parameters
+        ----------
+        spot_lons : `~astropy.units.Quantity`
+            Spot longitudes
+        spot_lats : `~astropy.units.Quantity`
+            Spot latitudes
+        inc_stellar : `~astropy.units.Quantity`
+            Stellar inclination
+        times : `~numpy.ndarray`
+            Times at which evaluate the stellar rotation
+        planet : `~batman.TransitParams`
+            Planet parameters
 
+        Returns
+        -------
+        tilted_spots : `~numpy.ndarray`
+            Rotated and tilted spot positions in cartesian coordinates
+        """
+        # Spots by default are given in unit spherical representation (lat, lon)
+        usr = UnitSphericalRepresentation(spot_lons, spot_lats)
+
+        # Represent those spots with cartesian coordinates (x, y, z)
+        # In this coordinate system, the observer is at positive x->inf,
+        # the star is at the origin, and (y, z) is the sky plane.
+        cartesian = usr.represent_as(CartesianRepresentation)
+
+        # Generate array of rotation matrices to rotate the spots about the
+        # stellar rotation axis
+        if times is None:
+            rotate = rotation_matrix(self.phases[:, np.newaxis, np.newaxis],
+                                     axis='z')
+        else:
+            rotational_phase = 2 * np.pi * ((times - planet.t0) /
+                                            self.rotation_period) * u.rad
+            rotate = rotation_matrix(rotational_phase[:, np.newaxis, np.newaxis],
+                                     axis='z')
+
+        rotated_spots = cartesian.transform(rotate)
+
+        if planet is not None and hasattr(planet, 'lam'):
+            lam = planet.lam * u.deg
+        else:
+            lam = 0 * u.deg
+
+        # Generate array of rotation matrices to rotate the spots so that the
+        # star is observed from the correct stellar inclination
+        stellar_inclination = rotation_matrix(inc_stellar - 90*u.deg, axis='y')
+        inclined_spots = rotated_spots.transform(stellar_inclination)
+
+        # Generate array of rotation matrices to rotate the spots so that the
+        # planet's orbit normal is tilted with respect to stellar spin
+        tilt = rotation_matrix(-lam, axis='x')
+        tilted_spots = inclined_spots.transform(tilt)
+
+        return tilted_spots
+
+    def _planet_spot_overlap_fast(self, planet, planet_disk, tilted_spots,
+                                  spot_radii, n_spots, X, Y, lambda_e):
+
+        # Find the approximate mid-transit time indices in the observations
+        # by looking for the sign flip in Y (planet crosses the sub-observer
+        # point) when also X < 0 (planet in front of star):
+        t0_inds = np.argwhere((np.sign(Y[1:]) < np.sign(Y[:-1])) &
+                              (X[1:] < 0))
+
+        # Compute the indices where the planet is in front of the star
+        # (X < 0) and the planet is near the star |Y| < 1 + p:
+        transit_inds_all = np.argwhere((X < 0) &
+                                       (np.abs(Y) < 1 + planet.rp))[:, 0]
+
+        # Split these indices up into separate numpy arrays for each
+        # contiguous group - this will generate a list of numpy arrays each
+        # containing the indices during individual transit events.
+        transit_inds_groups = consecutive(transit_inds_all)
+
+        # For each transit in the observations:
+        for k, t0_ind, transit_inds in zip(range(len(t0_inds)), t0_inds,
+                                           transit_inds_groups):
+
+            spots = []
+            spot_ld_factors = []
+
+            for i in range(n_spots):
+                # If the spot is visible (x > 0):
+                if tilted_spots.x.value[t0_ind, i] > 0:
+                    spot_y = tilted_spots.y.value[t0_ind, i]
+                    spot_z = tilted_spots.z.value[t0_ind, i]
+
+                    # Compute the spot position and ellipsoidal shape
+                    r_spot = np.hypot(spot_z, spot_y)
+                    angle = np.arctan2(spot_z, spot_y)
+                    ellipse_centroid = [spot_y, spot_z]
+
+                    ellipse_axes = [spot_radii[i, 0] *
+                                    np.sqrt(1 - r_spot**2),
+                                    spot_radii[i, 0]]
+
+                    spot = ellipse(ellipse_centroid, ellipse_axes,
+                                   np.degrees(angle))
+
+                    # Add the spot to our spot list
+                    spots.append(spot)
+                    spot_ld_factors.append(limb_darkening_normed(self.u_ld,
+                                                                 r_spot))
+
+            # If any spots are visible:
+            if len(spots) > 0:
+                intersections = np.zeros((transit_inds.ptp()+1, len(spots)))
+
+                # For each time when the planet is nearly transiting:
+                for i in range(len(transit_inds)):
+                    planet_disk_i = planet_disk[transit_inds[i]]
+                    if planet_disk_i is not None:
+                        for j in range(len(spots)):
+
+                            # Compute the overlap between each spot and the
+                            # planet using shapely's `intersection` method
+                            spot_planet_overlap = planet_disk_i.intersection(spots[j]).area
+
+                            intersections[i, j] = ((1 - self.spot_contrast) /
+                                                   spot_ld_factors[j] *
+                                                   spot_planet_overlap /
+                                                   np.pi)
+
+                # Subtract the spot occultation amplitudes from the spotless
+                # transit model that we computed earlier
+                lambda_e[transit_inds] -= intersections.max(axis=1)[:, np.newaxis]
+
+        return lambda_e
+
+    def _planet_spot_overlap_slow(self, planet, planet_disk, tilted_spots,
+                                  spot_radii, n_spots, X, Y, lambda_e):
+
+        # For each time in the observations:
+        for k, planet_disk_i in enumerate(planet_disk):
+
+            if planet_disk_i is not None:
                 spots = []
                 spot_ld_factors = []
 
                 for i in range(n_spots):
                     # If the spot is visible (x > 0):
-                    if tilted_spots.x.value[t0_ind, i] > 0:
-                        spot_y = tilted_spots.y.value[t0_ind, i]
-                        spot_z = tilted_spots.z.value[t0_ind, i]
+                    if tilted_spots.x.value[k, i] > 0:
+                        spot_y = tilted_spots.y.value[k, i]
+                        spot_z = tilted_spots.z.value[k, i]
 
                         # Compute the spot position and ellipsoidal shape
                         r_spot = np.hypot(spot_z, spot_y)
@@ -314,30 +455,23 @@ class Star(object):
 
                 # If any spots are visible:
                 if len(spots) > 0:
-                    intersections = np.zeros((transit_inds.ptp()+1, len(spots)))
+                    intersections = np.zeros(len(spots))
+                    for j in range(len(spots)):
 
-                    # For each time when the planet is nearly transiting:
-                    for i in range(len(transit_inds)):
-                        planet_disk_i = planet_disk[transit_inds[i]]
-                        if planet_disk_i is not None:
-                            for j in range(len(spots)):
+                        # Compute the overlap between each spot and the
+                        # planet using shapely's `intersection` method
+                        spot_planet_overlap = planet_disk_i.intersection(spots[j]).area
 
-                                # Compute the overlap between each spot and the
-                                # planet using shapely's `intersection` method
-                                spot_planet_overlap = planet_disk_i.intersection(spots[j]).area
+                        intersections[j] = ((1 - self.spot_contrast) /
+                                            spot_ld_factors[j] *
+                                            spot_planet_overlap /
+                                            np.pi)
 
-                                intersections[i, j] = ((1 - self.spot_contrast) /
-                                                       spot_ld_factors[j] *
-                                                       spot_planet_overlap /
-                                                       np.pi)
+                        # Subtract the spot occultation amplitudes from the spotless
+                        # transit model that we computed earlier
+                    lambda_e[k] -= intersections.max()# [:, np.newaxis]
 
-                    # Subtract the spot occultation amplitudes from the spotless
-                    # transit model that we computed earlier
-                    lambda_e[transit_inds] -= intersections.max(axis=1)[:, np.newaxis]
-
-        # Return the flux missing from the star at each time due to spots
-        # (f_spots/self.f0) and due to the transit (lambda_e):
-        return 1 - np.sum(f_spots.filled(0)/self.f0, axis=1) - lambda_e
+        return lambda_e
 
     def plot(self, spot_lons, spot_lats, spot_radii, inc_stellar, time=None,
              planet=None, ax=None):
@@ -456,68 +590,6 @@ class Star(object):
             ax.fill(-x, y, alpha=1-self.spot_contrast,
                     color='k')
         return ax
-
-    def spherical_to_cartesian(self, spot_lons, spot_lats, inc_stellar,
-                               times=None, planet=None):
-        """
-        Convert spot parameter matrices in the original stellar coordinates to
-        rotated and tilted cartesian coordinates.
-
-        Parameters
-        ----------
-        spot_lons : `~astropy.units.Quantity`
-            Spot longitudes
-        spot_lats : `~astropy.units.Quantity`
-            Spot latitudes
-        inc_stellar : `~astropy.units.Quantity`
-            Stellar inclination
-        times : `~numpy.ndarray`
-            Times at which evaluate the stellar rotation
-        planet : `~batman.TransitParams`
-            Planet parameters
-
-        Returns
-        -------
-        tilted_spots : `~numpy.ndarray`
-            Rotated and tilted spot positions in cartesian coordinates
-        """
-        # Spots by default are given in unit spherical representation (lat, lon)
-        usr = UnitSphericalRepresentation(spot_lons, spot_lats)
-
-        # Represent those spots with cartesian coordinates (x, y, z)
-        # In this coordinate system, the observer is at positive x->inf,
-        # the star is at the origin, and (y, z) is the sky plane.
-        cartesian = usr.represent_as(CartesianRepresentation)
-
-        # Generate array of rotation matrices to rotate the spots about the
-        # stellar rotation axis
-        if times is None:
-            rotate = rotation_matrix(self.phases[:, np.newaxis, np.newaxis],
-                                     axis='z')
-        else:
-            rotational_phase = 2 * np.pi * ((times - planet.t0) /
-                                            self.rotation_period) * u.rad
-            rotate = rotation_matrix(rotational_phase[:, np.newaxis, np.newaxis],
-                                     axis='z')
-
-        rotated_spots = cartesian.transform(rotate)
-
-        if planet is not None and hasattr(planet, 'lam'):
-            lam = planet.lam * u.deg
-        else:
-            lam = 0 * u.deg
-
-        # Generate array of rotation matrices to rotate the spots so that the
-        # star is observed from the correct stellar inclination
-        stellar_inclination = rotation_matrix(inc_stellar - 90*u.deg, axis='y')
-        inclined_spots = rotated_spots.transform(stellar_inclination)
-
-        # Generate array of rotation matrices to rotate the spots so that the
-        # planet's orbit normal is tilted with respect to stellar spin
-        tilt = rotation_matrix(-lam, axis='x')
-        tilted_spots = inclined_spots.transform(tilt)
-
-        return tilted_spots
 
 
 def generate_spots(min_latitude, max_latitude, spot_radius, n_spots,
