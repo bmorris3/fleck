@@ -9,4 +9,5 @@ Fast light curves of spotted stars in Python.
 
   fleck/installation.rst
   fleck/gettingstarted.rst
+  fleck/details.rst
   fleck/index.rst

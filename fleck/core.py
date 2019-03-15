@@ -112,9 +112,8 @@ def circle(center, radius):
     circle : `~shapely.geometry.polygon.Polygon`
         Circular shapely object
     """
-    circle = affinity.scale(Point(center).buffer(1),
-                            xfact=radius, yfact=radius)
-    return circle
+    return affinity.scale(Point(center).buffer(1),
+                          xfact=radius, yfact=radius)
 
 
 def consecutive(data, step_size=1):
@@ -348,7 +347,37 @@ class Star(object):
 
     def _planet_spot_overlap_fast(self, planet, planet_disk, tilted_spots,
                                   spot_radii, n_spots, X, Y, lambda_e):
+        """
+        Compute the overlap between the planet and starspots using the fast,
+        approximate method.
 
+        The approximation used by the fast method is to assume that: (1) the
+        mid-transit time is observed for each transit in the observations, and
+        (2) starspots are fixed during the transit event. This approximation is
+        suitable to use when the stellar rotation period is much longer than the
+        transit duration, and only complete transits are observed.
+
+        Parameters
+        ----------
+        planet : `~batman.TransitParams`
+            Planet parameters from the batman API
+        planet_disk : list
+            List of positions of the planet when the planet is in front of the
+            star.
+        tilted_spots : `~astropy.units.Quantity`
+            Cartesian positions of the starspots in the planet's "observer
+            oriented" coordinate frame.
+        spot_radii : `~numpy.ndarray`
+            Radii of the starspots
+        n_spots : int
+            Number of spots
+        X : `~numpy.ndarray`
+            Cartesian `X` position of the planet at all times
+        Y : `~numpy.ndarray`
+            Cartesian `Y` position of the planet at all times
+        lambda_e : `~numpy.ndarray`
+            Occulted flux fraction (Mandel & Agol 2002)
+        """
         # Find the approximate mid-transit time indices in the observations
         # by looking for the sign flip in Y (planet crosses the sub-observer
         # point) when also X < 0 (planet in front of star):
@@ -418,11 +447,36 @@ class Star(object):
                 # transit model that we computed earlier
                 lambda_e[transit_inds] -= intersections.max(axis=1)[:, np.newaxis]
 
-        return lambda_e
-
     def _planet_spot_overlap_slow(self, planet, planet_disk, tilted_spots,
                                   spot_radii, n_spots, X, Y, lambda_e):
+        """
+        Compute the overlap between the planet and starspots using the slow,
+        precise method.
 
+        This method accounts for the motion of the starspots during the transit
+        event.
+
+        Parameters
+        ----------
+        planet : `~batman.TransitParams`
+            Planet parameters from the batman API
+        planet_disk : list
+            List of positions of the planet when the planet is in front of the
+            star.
+        tilted_spots : `~astropy.units.Quantity`
+            Cartesian positions of the starspots in the planet's "observer
+            oriented" coordinate frame.
+        spot_radii : `~numpy.ndarray`
+            Radii of the starspots
+        n_spots : int
+            Number of spots
+        X : `~numpy.ndarray`
+            Cartesian `X` position of the planet at all times
+        Y : `~numpy.ndarray`
+            Cartesian `Y` position of the planet at all times
+        lambda_e : `~numpy.ndarray`
+            Occulted flux fraction (Mandel & Agol 2002)
+        """
         # For each time in the observations:
         for k, planet_disk_i in enumerate(planet_disk):
 
@@ -467,11 +521,9 @@ class Star(object):
                                             spot_planet_overlap /
                                             np.pi)
 
-                        # Subtract the spot occultation amplitudes from the spotless
-                        # transit model that we computed earlier
-                    lambda_e[k] -= intersections.max()# [:, np.newaxis]
-
-        return lambda_e
+                    # Subtract the spot occultation amplitudes from the spotless
+                    # transit model that we computed earlier
+                    lambda_e[k] -= intersections.max()
 
     def plot(self, spot_lons, spot_lats, spot_radii, inc_stellar, time=None,
              planet=None, ax=None):
@@ -573,9 +625,10 @@ class Star(object):
 
         # Where equator is visible, mark it:
         equator_visible = equatorial_line.x > 0
-        xy = np.vstack([-equatorial_line.y[equator_visible],
-                        equatorial_line.z[equator_visible]]).T
-        sort_equator = sort_plot_points(xy, k0=np.argmax(xy[:, 1]))
+        equator_xy = np.vstack([-equatorial_line.y[equator_visible],
+                                equatorial_line.z[equator_visible]]).T
+        sort_equator = sort_plot_points(equator_xy,
+                                        k0=np.argmax(equator_xy[:, 1]))
         ax.plot(-equatorial_line.y[equator_visible][sort_equator],
                 equatorial_line.z[equator_visible][sort_equator],
                 ls=':', color='gray')
@@ -586,8 +639,9 @@ class Star(object):
 
         # Draw each starspot:
         for i in range(len(spots)):
-            x, y = [np.array(j.tolist()) for j in spots[i].exterior.xy]
-            ax.fill(-x, y, alpha=1-self.spot_contrast,
+            spot_x, spot_y = [np.array(j.tolist())
+                              for j in spots[i].exterior.xy]
+            ax.fill(-spot_x, spot_y, alpha=1-self.spot_contrast,
                     color='k')
         return ax
 
