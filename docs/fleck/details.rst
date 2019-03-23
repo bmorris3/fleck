@@ -108,6 +108,7 @@ are masked from further computations, as these spots will not be visible to the
 observer. We use :math:`\rho` to compute the quadratic limb darkening
 
 .. math::
+
     \begin{equation}
         I(\rho) = \frac{1}{\pi} \frac{1 - u_1 (1 - \mu) - u_2 (1 - \mu)^2}{1 - u_1/3 - u_2/6}
     \end{equation}
@@ -116,6 +117,7 @@ for :math:`\mu = \sqrt{1 - \rho^2}`. We compute the flux missing due to
 starspots of radii :math:`\bf R_{\rm spot}`, which has shape :math:`(M, N)`:
 
 .. math::
+
     \begin{equation}
     {\rm F_{spots}} = \pi {\bf R}_{\rm spot}^2  (1 - c) \frac{I(r)}{I(0)} \sqrt{1 - {\bf \rho}^2}
     \end{equation}
@@ -123,6 +125,7 @@ starspots of radii :math:`\bf R_{\rm spot}`, which has shape :math:`(M, N)`:
 The unspotted flux of the star is
 
 .. math::
+
     \begin{equation}
         {\rm F_{unspotted}} = \int_0^R 2\pi r I(r) dr,
     \end{equation}
@@ -130,6 +133,7 @@ The unspotted flux of the star is
 so the spotted flux is
 
 .. math::
+
     \begin{equation}
         {\rm F_{spotted}} = 1 - \frac{\rm F_{spots,ijk}F_{spots}^{ik}}{\rm F_{unspotted}}
     \end{equation}

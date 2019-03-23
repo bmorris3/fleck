@@ -186,7 +186,8 @@ class Star(object):
         self.rotation_period = rotation_period
 
     def light_curve(self, spot_lons, spot_lats, spot_radii, inc_stellar,
-                    planet=None, times=None, fast=True):
+                    planet=None, times=None, fast=False, time_ref=None,
+                    return_spots_occulted=False):
         """
         Generate a(n ensemble of) light curve(s).
 
@@ -212,6 +213,10 @@ class Star(object):
             during a transit event. When `False`, account for motion of
             starspots on stellar surface due to rotation during transit event.
             Default is `True`.
+        time_ref : float
+            Reference time used as the initial rotational phase of the star,
+            such that the sub-observer point is at zero longitude at
+            ``time_ref``.
 
         Returns
         -------
@@ -219,10 +224,17 @@ class Star(object):
             Stellar light curves of shape ``(n_phases, len(inc_stellar))`` or
             ``(len(times), len(inc_stellar))``
         """
+        if time_ref is None:
+            if times is not None:
+                time_ref = times[0]
+            else:
+                time_ref = self.phases[0]
+
         # Compute the spot positions in cartesian coordinates:
         tilted_spots = self.spherical_to_cartesian(spot_lons, spot_lats,
                                                    inc_stellar, times=times,
-                                                   planet=planet)
+                                                   planet=planet,
+                                                   time_ref=time_ref)
 
         # Compute the distance of each spot from the stellar centroid, mask
         # any spots that are "behind" the star, in other words, x < 0
@@ -271,20 +283,31 @@ class Star(object):
                            for i in range(len(f))]
 
             if fast:
-                self._planet_spot_overlap_fast(planet, planet_disk,
-                                               tilted_spots, spot_radii,
-                                               n_spots, X, Y, lambda_e)
+                spots_occulted = self._planet_spot_overlap_fast(planet,
+                                                                planet_disk,
+                                                                tilted_spots,
+                                                                spot_radii,
+                                                                n_spots, X, Y,
+                                                                lambda_e)
             else:
-                self._planet_spot_overlap_slow(planet, planet_disk,
-                                               tilted_spots, spot_radii,
-                                               n_spots, X, Y, lambda_e)
+                spots_occulted = self._planet_spot_overlap_slow(planet,
+                                                                planet_disk,
+                                                                tilted_spots,
+                                                                spot_radii,
+                                                                n_spots, X, Y,
+                                                                lambda_e)
 
         # Return the flux missing from the star at each time due to spots
         # (f_spots/self.f0) and due to the transit (lambda_e):
-        return 1 - np.sum(f_spots.filled(0)/self.f0, axis=1) - lambda_e
+        if return_spots_occulted:
+            return (1 - np.sum(f_spots.filled(0)/self.f0, axis=1) - lambda_e,
+                    spots_occulted)
+
+        else:
+            return 1 - np.sum(f_spots.filled(0)/self.f0, axis=1) - lambda_e
 
     def spherical_to_cartesian(self, spot_lons, spot_lats, inc_stellar,
-                               times=None, planet=None):
+                               times=None, planet=None, time_ref=None):
         """
         Convert spot parameter matrices in the original stellar coordinates to
         rotated and tilted cartesian coordinates.
@@ -301,6 +324,10 @@ class Star(object):
             Times at which evaluate the stellar rotation
         planet : `~batman.TransitParams`
             Planet parameters
+        time_ref : float
+            Reference time used as the initial rotational phase of the star,
+            such that the sub-observer point is at zero longitude at
+            ``time_ref``.
 
         Returns
         -------
@@ -321,7 +348,9 @@ class Star(object):
             rotate = rotation_matrix(self.phases[:, np.newaxis, np.newaxis],
                                      axis='z')
         else:
-            rotational_phase = 2 * np.pi * ((times - planet.t0) /
+            if time_ref is None:
+                time_ref = 0
+            rotational_phase = 2 * np.pi * ((times - time_ref) /
                                             self.rotation_period) * u.rad
             rotate = rotation_matrix(rotational_phase[:, np.newaxis, np.newaxis],
                                      axis='z')
@@ -378,6 +407,7 @@ class Star(object):
         lambda_e : `~numpy.ndarray`
             Occulted flux fraction (Mandel & Agol 2002)
         """
+        spots_occulted = False
         # Find the approximate mid-transit time indices in the observations
         # by looking for the sign flip in Y (planet crosses the sub-observer
         # point) when also X < 0 (planet in front of star):
@@ -446,6 +476,9 @@ class Star(object):
                 # Subtract the spot occultation amplitudes from the spotless
                 # transit model that we computed earlier
                 lambda_e[transit_inds] -= intersections.max(axis=1)[:, np.newaxis]
+                spots_occulted = True
+
+        return spots_occulted
 
     def _planet_spot_overlap_slow(self, planet, planet_disk, tilted_spots,
                                   spot_radii, n_spots, X, Y, lambda_e):
@@ -477,6 +510,8 @@ class Star(object):
         lambda_e : `~numpy.ndarray`
             Occulted flux fraction (Mandel & Agol 2002)
         """
+        spots_occulted = False
+
         # For each time in the observations:
         for k, planet_disk_i in enumerate(planet_disk):
 
@@ -524,9 +559,11 @@ class Star(object):
                     # Subtract the spot occultation amplitudes from the spotless
                     # transit model that we computed earlier
                     lambda_e[k] -= intersections.max()
+                    spots_occulted = True
+        return spots_occulted
 
     def plot(self, spot_lons, spot_lats, spot_radii, inc_stellar, time=None,
-             planet=None, ax=None):
+             planet=None, ax=None, time_ref=None):
         """
         Generate a plot of the stellar surface at ``time``.
 
@@ -551,10 +588,14 @@ class Star(object):
             Stellar inclination
         time : float
             Time at which to evaluate the spot parameters
-        planet : `~batman.TransitParams`
-            Planet parameters
+        planet : `~batman.TransitParams` or list
+            Planet parameters, or list of planet parameters.
         ax : `~matplotlib.pyplot.Axes`, optional
             Predefined matplotlib axes
+        time_ref : float
+            Reference time used as the initial rotational phase of the star,
+            such that the sub-observer point is at zero longitude at
+            ``time_ref``.
 
         Returns
         -------
@@ -564,7 +605,8 @@ class Star(object):
         tilted_spots = self.spherical_to_cartesian(spot_lons, spot_lats,
                                                    inc_stellar,
                                                    times=np.array([time]),
-                                                   planet=planet)
+                                                   planet=planet,
+                                                   time_ref=time_ref)
         spots = []
 
         for i in range(len(spot_lons)):
@@ -591,14 +633,33 @@ class Star(object):
         if ax is None:
             ax = plt.gca()
 
-        # Calculate impact parameter
-        b = (planet.a * np.cos(np.radians(planet.inc)) * (1 - planet.ecc**2) /
-             (1 + planet.ecc * np.sin(np.radians(planet.w))))
+        if hasattr(planet, "__len__"):
+            # If there are multiple planets, plot their transit chord boundaries
+            for p, color in zip(planet, ["C{0:d}".format(i)
+                                         for i in range(len(planet))]):
+                # Calculate impact parameter
+                b = (p.a * np.cos(np.radians(p.inc)) * (1 - p.ecc**2) /
+                     (1 + p.ecc * np.sin(np.radians(p.w))))
 
-        # Compute the upper and lower envelopes of the transit chord in the
-        # "observer oriented" reference frame (Fabrycky & Winn 2009)
-        planet_lower_extent = -b-planet.rp
-        planet_upper_extent = -b+planet.rp
+                # Compute the upper and lower envelopes of the transit chord in
+                # the "observer oriented" reference frame (Fabrycky & Winn 2009)
+                planet_lower_extent = -b-p.rp
+                planet_upper_extent = -b+p.rp
+
+                ax.axhline(planet_lower_extent, color=color, ls='--')
+                ax.axhline(planet_upper_extent, color=color, ls='--')
+        else:
+            # Calculate impact parameter
+            b = (planet.a * np.cos(np.radians(planet.inc)) * (1 - planet.ecc**2) /
+                 (1 + planet.ecc * np.sin(np.radians(planet.w))))
+
+            # Compute the upper and lower envelopes of the transit chord in the
+            # "observer oriented" reference frame (Fabrycky & Winn 2009)
+            planet_lower_extent = -b-planet.rp
+            planet_upper_extent = -b+planet.rp
+
+            ax.axhline(planet_lower_extent, color='gray', ls='--')
+            ax.axhline(planet_upper_extent, color='gray', ls='--')
 
         # Compute the position of the rotational pole of the star
         pole_lat, pole_lon = np.array([90])*u.deg, np.array([0])*u.deg
@@ -633,8 +694,6 @@ class Star(object):
                 equatorial_line.z[equator_visible][sort_equator],
                 ls=':', color='gray')
 
-        ax.axhline(planet_lower_extent, color='gray', ls='--')
-        ax.axhline(planet_upper_extent, color='gray', ls='--')
         ax.set(ylim=[-1.01, 1.01], xlim=[-1.01, 1.01], aspect=1)
 
         # Draw each starspot:

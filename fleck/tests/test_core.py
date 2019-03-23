@@ -69,7 +69,7 @@ def test_stsp_transit(fast):
 
     fleck_lc = star.light_curve(spot_lons, spot_lats, spot_radii,
                                 inc_stellar, planet=planet, times=times,
-                                fast=fast)
+                                fast=fast, time_ref=0)
 
     # Assert matches STSP results to within 100 ppm:
     np.testing.assert_allclose(fleck_lc[:, 0], stsp_lc, atol=350e-6)
@@ -107,7 +107,7 @@ def test_stsp_double_transit(fast):
 
     fleck_lc = star.light_curve(spot_lons, spot_lats, spot_radii,
                                 inc_stellar, planet=planet, times=times,
-                                fast=fast)
+                                fast=fast, time_ref=0)
 
     # Assert matches STSP results to within 100 ppm:
     np.testing.assert_allclose(fleck_lc[:, 0], stsp_lc, atol=1e-3)
