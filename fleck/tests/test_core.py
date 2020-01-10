@@ -71,7 +71,7 @@ def test_stsp_transit(fast):
                                 inc_stellar, planet=planet, times=times,
                                 fast=fast, time_ref=0)
 
-    # Assert matches STSP results to within 100 ppm:
+    # Assert matches STSP results to within 350 ppm:
     np.testing.assert_allclose(fleck_lc[:, 0], stsp_lc, atol=350e-6)
 
 
@@ -109,5 +109,31 @@ def test_stsp_double_transit(fast):
                                 inc_stellar, planet=planet, times=times,
                                 fast=fast, time_ref=0)
 
-    # Assert matches STSP results to within 100 ppm:
+    # Assert matches STSP results to within 1 ppt:
     np.testing.assert_allclose(fleck_lc[:, 0], stsp_lc, atol=1e-3)
+
+
+def test_flux_decrement():
+    n_phases = 1000
+    spot_contrast = 0.7
+    u_ld = [0, 0]
+    inc_stellar = 90
+
+    lats = np.array([0])[:, np.newaxis]
+    lons = np.array([180])[:, np.newaxis]
+    rads = np.array([0.1])[:, np.newaxis]
+
+    star = Star(spot_contrast, u_ld, n_phases=n_phases)
+    fleck_lc = star.light_curve(lons * u.deg, lats * u.deg, rads,
+                                inc_stellar * u.deg)
+
+    analytic_depth = rads ** 2 * (1 - spot_contrast)
+
+    # Ensure that flux minimum occurs when star is rotated half-way:
+    assert fleck_lc.argmin() == fleck_lc.shape[0] // 2
+
+    # Ensure that flux minimum is the correct depth:
+    assert abs(fleck_lc.min() - (1 - analytic_depth)) < 1e-6
+
+    # Ensure that the maximum flux is unity:
+    assert fleck_lc.max() == 1.0

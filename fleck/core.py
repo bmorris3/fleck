@@ -212,11 +212,13 @@ class Star(object):
             When `True`, use approximation that spots are fixed on the star
             during a transit event. When `False`, account for motion of
             starspots on stellar surface due to rotation during transit event.
-            Default is `True`.
-        time_ref : float
+            Default is `False`.
+        time_ref : float, optional
             Reference time used as the initial rotational phase of the star,
             such that the sub-observer point is at zero longitude at
             ``time_ref``.
+        return_spots_occulted : bool, optional
+            Return whether or not spots have been occulted.
 
         Returns
         -------
@@ -226,7 +228,7 @@ class Star(object):
         """
         if time_ref is None:
             if times is not None:
-                time_ref = times[0]
+                time_ref = 0
             else:
                 time_ref = self.phases[0]
 
@@ -476,7 +478,8 @@ class Star(object):
                 # Subtract the spot occultation amplitudes from the spotless
                 # transit model that we computed earlier
                 lambda_e[transit_inds] -= intersections.max(axis=1)[:, np.newaxis]
-                spots_occulted = True
+                if not np.all(intersections == 0):
+                    spots_occulted = True
 
         return spots_occulted
 
@@ -559,7 +562,8 @@ class Star(object):
                     # Subtract the spot occultation amplitudes from the spotless
                     # transit model that we computed earlier
                     lambda_e[k] -= intersections.max()
-                    spots_occulted = True
+                    if not np.all(intersections == 0):
+                        spots_occulted = True
         return spots_occulted
 
     def plot(self, spot_lons, spot_lats, spot_radii, inc_stellar, time=None,
@@ -743,7 +747,7 @@ def generate_spots(min_latitude, max_latitude, spot_radius, n_spots,
     if n_inclinations is not None and inclinations is None:
         inc_stellar = (180*np.random.rand(n_inclinations) - 90) * u.deg
     else:
-        n_inclinations = len(inclinations)
+        n_inclinations = len(inclinations) if not inclinations.isscalar else 1
         inc_stellar = inclinations
     radii = spot_radius * np.ones((n_spots, n_inclinations))
     lats = (delta_latitude*np.random.rand(n_spots, n_inclinations) +
