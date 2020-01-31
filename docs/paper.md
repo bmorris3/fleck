@@ -16,8 +16,8 @@ affiliations:
 date: 31 January 2020
 bibliography: paper.bib
 
-aas-doi: 10.3847/xxxxx <- update this with the DOI from AAS once you know it.
-aas-journal: Astrophysical Journal <- The name of the AAS journal.
+aas-doi: 10.3847/xxxxx
+aas-journal: Astrophysical Journal
 ---
 
 # Summary
@@ -40,7 +40,7 @@ determine starspot coverages accurately for a sample of young stars. ``fleck``
 simulates starspots as circular dark regions on the surfaces of rotating stars, 
 accounting for foreshortening towards the limb, and limb darkening. The 
 software is an efficient, vectorized iteration of earlier codes used in 
-@Morris:2018 and @Morris:2019a. 
+@Morris:2018 and @Morris:2019. 
 
 The user supplies the latitudes, longitudes and radii of spots, and the stellar 
 inclinations from which each star is viewed, and ``fleck`` takes advantage of 
