@@ -194,9 +194,7 @@ distribution, and the spot map using ``healpy``::
   :width: 800
   :alt: Posterior samples
 
-Finally, we can print the spot coverage:
-
-.. code-block:: python
+Finally, we can print the spot coverage::
 
     >>> lo, mid, hi = np.percentile(f_S, [16, 50, 84])
     >>> print(f"$f_S = {{{mid:g}}}^{{+{hi-mid:g}}}_{{-{mid-lo:g}}}$")
