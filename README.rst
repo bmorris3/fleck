@@ -13,6 +13,10 @@ fleck
     :target: http://www.astropy.org
     :alt: Powered by Astropy Badge
 
+.. image:: https://joss.theoj.org/papers/dd737faef3d36ef40b428df69cc237c6/status.svg
+    :target: https://joss.theoj.org/papers/dd737faef3d36ef40b428df69cc237c6
+    :alt: JOSS Status
+
 
 Fast starspot rotational modulation light curves in Python. For more information
 `read the docs <https://fleck.readthedocs.io/>`_.
