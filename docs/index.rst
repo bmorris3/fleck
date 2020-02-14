@@ -26,4 +26,6 @@ starspot distributions with Approximate Bayesian Computation, for example.
   fleck/installation.rst
   fleck/gettingstarted.rst
   fleck/details.rst
+  fleck/bayes/mcmc.rst
+  fleck/bayes/abc.rst
   fleck/index.rst
