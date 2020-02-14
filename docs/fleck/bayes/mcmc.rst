@@ -196,6 +196,7 @@ distribution, and the spot map using ``healpy``::
 
 Finally, we can print the spot coverage::
 
-    >>> lo, mid, hi = np.percentile(f_S, [16, 50, 84])
-    >>> print(f"$f_S = {{{mid:g}}}^{{+{hi-mid:g}}}_{{-{mid-lo:g}}}$")
-    $f_S = {0.0871266}^{+0.00665673}_{-0.0258528}$
+    lo, mid, hi = np.percentile(f_S, [16, 50, 84])
+    print(f"$f_S = {{{mid:g}}}^{{+{hi-mid:g}}}_{{-{mid-lo:g}}}$")
+
+which returns :math:`f_S = {0.087}^{+0.006}_{-0.025}`.
