@@ -36,4 +36,8 @@ Contributing
 ------------
 
 We love contributions! fleck is open source, built on open source, and we'd love
-to have you in our community.
+to have you in our community. To contribute to ``fleck``, please follow the
+`Astropy dev guidelines <https://docs.astropy.org/en/stable/development/workflow/development_workflow.html>`_
+to make a code contribution. Please report any issues or requests for support
+via the 
+`GitHub Issue tracker <https://github.com/bmorris3/fleck/issues>`_.
