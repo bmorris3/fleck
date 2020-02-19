@@ -52,15 +52,21 @@ inclinations, in about 10 seconds on a 2.5 GHz Intel Core i7 processor.
 This rapid computation of light curves en masse makes it possible to measure 
 starspot distributions with Approximate Bayesian Computation.
 
-The mathematical formalism of the ``fleck`` algorithm is detailed in the 
-software's documentation. 
+While ``fleck`` is intended to model ensembles of light curves, we also include
+some examples of fitting light curves of individual spotted stars. Other 
+methods exist which are more efficient for modeling individual systems, such as
+``starry`` [@Luger:2019] and ``spotrod`` [@Beky:2014], and we encourage users
+to explore whether those packages might be ideal for modeling individual 
+systems.
 
-The ``fleck`` package is built on the ``astropy`` package template 
-[@Astropy:2018].
+The mathematical formalism of the ``fleck`` algorithm is detailed in the 
+software's documentation. The ``fleck`` package is built on the ``astropy`` 
+package template [@Astropy:2018].
 
 # Acknowledgements
 
-We acknowledge valuable vectorization conversations with Erik Tollerud.
+We acknowledge valuable vectorization conversations with Erik Tollerud, and
+helpful reviews from Néstor Espinoza and Rodrigo Luger.
 
 # References
 
