@@ -346,7 +346,7 @@ class Star(object):
 
         # Generate array of rotation matrices to rotate the spots about the
         # stellar rotation axis
-        if times is None:
+        if times is None or (hasattr(times, '__len__') and times[0] is None):
             rotate = rotation_matrix(self.phases[:, np.newaxis, np.newaxis],
                                      axis='z')
         else:
@@ -567,7 +567,7 @@ class Star(object):
         return spots_occulted
 
     def plot(self, spot_lons, spot_lats, spot_radii, inc_stellar, time=None,
-             planet=None, ax=None, time_ref=None):
+             planet=None, ax=None, time_ref=0):
         """
         Generate a plot of the stellar surface at ``time``.
 
@@ -652,7 +652,7 @@ class Star(object):
 
                 ax.axhline(planet_lower_extent, color=color, ls='--')
                 ax.axhline(planet_upper_extent, color=color, ls='--')
-        else:
+        elif hasattr(planet, 'a'):
             # Calculate impact parameter
             b = (planet.a * np.cos(np.radians(planet.inc)) * (1 - planet.ecc**2) /
                  (1 + planet.ecc * np.sin(np.radians(planet.w))))
