@@ -116,6 +116,7 @@ and some times at which to observe the system::
 let's initialize our `~fleck.Star` object, specifying a stellar rotation
 period::
 
+    from fleck import Star
     star = Star(spot_contrast=0.7, u_ld=planet.u, rotation_period=10)
 
 We generate a light curve using the same `~fleck.Star.light_curve` method that

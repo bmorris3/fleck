@@ -279,7 +279,7 @@ class Star(object):
 
             # Create a shapely circle object for the planet's silhouette only
             # when the planet is in front of the star, otherwise append `None`
-            planet_disk = [circle([Y[i], -Z[i]], planet.rp)
+            planet_disk = [circle([-Y[i], -Z[i]], planet.rp)
                            if (np.abs(Y[i]) < 1 + planet.rp) and
                               (X[i] < 0) else None
                            for i in range(len(f))]
@@ -704,7 +704,7 @@ class Star(object):
         for i in range(len(spots)):
             spot_x, spot_y = [np.array(j.tolist())
                               for j in spots[i].exterior.xy]
-            ax.fill(-spot_x, spot_y, alpha=1-self.spot_contrast,
+            ax.fill(spot_x, spot_y, alpha=1-self.spot_contrast,
                     color='k')
         return ax
 
