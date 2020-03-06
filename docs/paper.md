@@ -16,7 +16,7 @@ affiliations:
 date: 31 January 2020
 bibliography: paper.bib
 
-aas-doi: 10.3847/xxxxx
+aas-doi: 10.3847/1538-4357/ab79a0
 aas-journal: Astrophysical Journal
 ---
 
