@@ -48,8 +48,9 @@ efficient array broadcasting with ``numpy`` to  return approximate light curves
 [@Numpy:2011]. For example, the present algorithm can compute rotational 
 modulation curves sampled at ten points throughout the rotation of each star 
 for one million stars, with two unique spots each, all viewed at unique 
-inclinations, in about 10 seconds on a 2.5 GHz Intel Core i7 processor. 
-This rapid computation of light curves en masse makes it possible to measure 
+inclinations, in about 10 seconds on a regular laptop (64-bit Mac OS X,
+Intel Core i7 2.5 GHz CPU, 16 GB RAM). This rapid computation of light 
+curves en masse makes it possible to measure 
 starspot distributions with Approximate Bayesian Computation.
 
 While ``fleck`` is intended to model ensembles of light curves, we also include
