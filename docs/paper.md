@@ -49,7 +49,7 @@ efficient array broadcasting with ``numpy`` to  return approximate light curves
 modulation curves sampled at ten points throughout the rotation of each star 
 for one million stars, with two unique spots each, all viewed at unique 
 inclinations, in about 10 seconds on a regular laptop (64-bit Mac OS X,
-Intel Core i7 2.5 GHz CPU, 16 GB RAM). This rapid computation of light 
+Intel Core i7-4870HQ 2.5 GHz CPU, 16 GB RAM). This rapid computation of light 
 curves en masse makes it possible to measure 
 starspot distributions with Approximate Bayesian Computation.
 
