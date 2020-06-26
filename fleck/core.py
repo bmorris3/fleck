@@ -187,7 +187,7 @@ class Star(object):
 
     def light_curve(self, spot_lons, spot_lats, spot_radii, inc_stellar,
                     planet=None, times=None, fast=False, time_ref=None,
-                    return_spots_occulted=False):
+                    return_spots_occulted=False, transit_model_kwargs={}):
         """
         Generate a(n ensemble of) light curve(s).
 
@@ -259,7 +259,7 @@ class Star(object):
                                  '``inc_stellar`` has multiple values. ')
             # Compute a transit model
             n_spots = len(spot_lons)
-            m = TransitModel(planet, times)
+            m = TransitModel(planet, times, **transit_model_kwargs)
             lambda_e = 1 - m.light_curve(planet)[:, np.newaxis]
             # Compute the true anomaly of the planet at each time, f:
             f = m.get_true_anomaly()
