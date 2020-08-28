@@ -1,7 +1,6 @@
 import numpy as np
 import os
 import astropy.units as u
-from batman import TransitParams
 import pytest
 
 from ..core import Star
@@ -43,6 +42,7 @@ def test_stsp_rotational_modulation(fast):
     ("False", ),
 ])
 def test_stsp_transit(fast):
+    from batman import TransitParams
 
     planet = TransitParams()
     planet.per = 88
@@ -80,6 +80,7 @@ def test_stsp_transit(fast):
     ("False", ),
 ])
 def test_stsp_double_transit(fast):
+    from batman import TransitParams
 
     planet = TransitParams()
     planet.per = 88

@@ -7,7 +7,6 @@ from scipy.spatial.distance import pdist, squareform
 from scipy.integrate import quad
 from shapely.geometry.point import Point
 from shapely import affinity
-from batman import TransitModel
 import matplotlib.pyplot as plt
 
 
@@ -258,6 +257,8 @@ class Star(object):
                                  'planets transiting single stars only, but '
                                  '``inc_stellar`` has multiple values. ')
             # Compute a transit model
+            from batman import TransitModel
+
             n_spots = len(spot_lons)
             m = TransitModel(planet, times, **transit_model_kwargs)
             lambda_e = 1 - m.light_curve(planet)[:, np.newaxis]
