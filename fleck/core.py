@@ -746,7 +746,8 @@ def generate_spots(min_latitude, max_latitude, spot_radius, n_spots,
     """
     delta_latitude = max_latitude - min_latitude
     if n_inclinations is not None and inclinations is None:
-        inc_stellar = (180*np.random.rand(n_inclinations) - 90) * u.deg
+        inc_stellar = np.arccos(np.random.rand(n_inclinations))
+        inc_stellar *= np.sign(np.random.uniform(-1, 1, n_inclinations)) * u.deg
     else:
         n_inclinations = len(inclinations) if not inclinations.isscalar else 1
         inc_stellar = inclinations
