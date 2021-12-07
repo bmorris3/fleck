@@ -243,7 +243,6 @@ class Star(object):
                                         tilted_spots.z.value),
                                mask=tilted_spots.x.value < 0)
         ld = limb_darkening_normed(self.u_ld, r)
-
         # Compute the out-of-transit flux missing due to each spot
         f_spots = (np.pi * spot_radii**2 * (1 - self.spot_contrast) * ld *
                    np.sqrt(1 - r**2))
@@ -747,7 +746,8 @@ def generate_spots(min_latitude, max_latitude, spot_radius, n_spots,
     delta_latitude = max_latitude - min_latitude
     if n_inclinations is not None and inclinations is None:
         inc_stellar = np.arccos(np.random.rand(n_inclinations))
-        inc_stellar = inc_stellar * np.sign(np.random.uniform(-1, 1, n_inclinations)) * u.deg
+        inc_stellar = inc_stellar * np.sign(np.random.uniform(-1, 1, n_inclinations)) * u.rad
+        inc_stellar = inc_stellar.to(u.deg)
     else:
         n_inclinations = len(inclinations) if not inclinations.isscalar else 1
         inc_stellar = inclinations
