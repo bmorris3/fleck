@@ -130,7 +130,7 @@ def sort_plot_points(xy_coord, k0=0):
     n = len(xy_coord)
     distance_matrix = squareform(pdist(xy_coord, metric='euclidean'))
     mask = np.ones(n, dtype='bool')
-    sorted_order = np.zeros(n, dtype=np.int)
+    sorted_order = np.zeros(n, dtype=np.int32)
     indices = np.arange(n)
 
     i = 0
@@ -358,7 +358,6 @@ class Star(object):
             rotate = rotation_matrix(rotational_phase[..., np.newaxis, np.newaxis],
                                      axis='z')
 
-        print(rotate.shape)
         rotated_spots = cartesian.transform(rotate)
 
         if planet is not None and hasattr(planet, 'lam'):
