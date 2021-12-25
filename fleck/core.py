@@ -236,13 +236,14 @@ class Star(object):
                                                    inc_stellar, times=times,
                                                    planet=planet,
                                                    time_ref=time_ref)
-
+        
         # Compute the distance of each spot from the stellar centroid, mask
         # any spots that are "behind" the star, in other words, x < 0
         r = np.ma.masked_array(np.hypot(tilted_spots.y.value,
                                         tilted_spots.z.value),
                                mask=tilted_spots.x.value < 0)
         ld = limb_darkening_normed(self.u_ld, r)
+
         # Compute the out-of-transit flux missing due to each spot
         f_spots = (np.pi * spot_radii**2 * (1 - self.spot_contrast) * ld *
                    np.sqrt(1 - r**2))
@@ -347,16 +348,17 @@ class Star(object):
         # Generate array of rotation matrices to rotate the spots about the
         # stellar rotation axis
         if times is None or (hasattr(times, '__len__') and times[0] is None):
-            rotate = rotation_matrix(self.phases[:, np.newaxis, np.newaxis],
+            rotate = rotation_matrix(self.phases[..., np.newaxis, np.newaxis],
                                      axis='z')
         else:
             if time_ref is None:
                 time_ref = 0
             rotational_phase = 2 * np.pi * ((times - time_ref) /
                                             self.rotation_period) * u.rad
-            rotate = rotation_matrix(rotational_phase[:, np.newaxis, np.newaxis],
+            rotate = rotation_matrix(rotational_phase[..., np.newaxis, np.newaxis],
                                      axis='z')
 
+        print(rotate.shape)
         rotated_spots = cartesian.transform(rotate)
 
         if planet is not None and hasattr(planet, 'lam'):
