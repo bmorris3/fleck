@@ -130,7 +130,7 @@ def sort_plot_points(xy_coord, k0=0):
     n = len(xy_coord)
     distance_matrix = squareform(pdist(xy_coord, metric='euclidean'))
     mask = np.ones(n, dtype='bool')
-    sorted_order = np.zeros(n, dtype=np.int)
+    sorted_order = np.zeros(n, dtype=np.int32)
     indices = np.arange(n)
 
     i = 0
@@ -236,7 +236,7 @@ class Star(object):
                                                    inc_stellar, times=times,
                                                    planet=planet,
                                                    time_ref=time_ref)
-
+        
         # Compute the distance of each spot from the stellar centroid, mask
         # any spots that are "behind" the star, in other words, x < 0
         r = np.ma.masked_array(np.hypot(tilted_spots.y.value,
@@ -348,14 +348,14 @@ class Star(object):
         # Generate array of rotation matrices to rotate the spots about the
         # stellar rotation axis
         if times is None or (hasattr(times, '__len__') and times[0] is None):
-            rotate = rotation_matrix(self.phases[:, np.newaxis, np.newaxis],
+            rotate = rotation_matrix(self.phases[..., np.newaxis, np.newaxis],
                                      axis='z')
         else:
             if time_ref is None:
                 time_ref = 0
             rotational_phase = 2 * np.pi * ((times - time_ref) /
                                             self.rotation_period) * u.rad
-            rotate = rotation_matrix(rotational_phase[:, np.newaxis, np.newaxis],
+            rotate = rotation_matrix(rotational_phase[..., np.newaxis, np.newaxis],
                                      axis='z')
 
         rotated_spots = cartesian.transform(rotate)
@@ -747,7 +747,8 @@ def generate_spots(min_latitude, max_latitude, spot_radius, n_spots,
     delta_latitude = max_latitude - min_latitude
     if n_inclinations is not None and inclinations is None:
         inc_stellar = np.arccos(np.random.rand(n_inclinations))
-        inc_stellar *= np.sign(np.random.uniform(-1, 1, n_inclinations)) * u.deg
+        inc_stellar = inc_stellar * np.sign(np.random.uniform(-1, 1, n_inclinations)) * u.rad
+        inc_stellar = inc_stellar.to(u.deg)
     else:
         n_inclinations = len(inclinations) if not inclinations.isscalar else 1
         inc_stellar = inclinations
