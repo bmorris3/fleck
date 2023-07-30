@@ -2,9 +2,6 @@
 fleck
 *****
 
-.. image:: https://travis-ci.org/bmorris3/fleck.svg?branch=master
-    :target: https://travis-ci.org/bmorris3/fleck
-
 .. image:: https://readthedocs.org/projects/fleck/badge/?version=latest
     :target: https://fleck.readthedocs.io/en/latest/?badge=latest
     :alt: Documentation Status

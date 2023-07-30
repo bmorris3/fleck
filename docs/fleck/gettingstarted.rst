@@ -10,7 +10,9 @@ each with spot contrast ``c=0.7`` (where ``c=0`` means perfectly dark spots),
 with quadratic limb-darkening. Let's distribute three spots on each star
 randomly above 70 degrees latitude up to the pole. We can use the
 `~fleck.generate_spots` method to quickly create spot property matrices in the
-correct shape::
+correct shape:
+
+.. code-block:: python
 
     from fleck import generate_spots
 
@@ -31,7 +33,9 @@ correct shape::
 
 ``lons, lats, radii`` will each have shape ``(n_spots, n_inclinations)`` and
 ``inc_stellar`` will have shape ``(n_inclinations, )``. Now let's initialize
-a `~fleck.Star` object::
+a `~fleck.Star` object:
+
+.. code-block:: python
 
     from fleck import Star
 
@@ -45,7 +49,9 @@ Now we can compute light curves for stars with the spots we generated like so::
     lcs = star.light_curve(lons, lats, radii, inc_stellar)
 
 where ``lcs`` will have shape ``(n_phases, n_inclinations)``. Let's plot each of
-the light curves::
+the light curves:
+
+.. code-block:: python
 
     import matplotlib.pyplot as plt
     plt.plot(star.phases, lcs)
@@ -84,7 +90,9 @@ Spot Occultations
 
 Now let's make a transiting exoplanet, and observe spot occultations. We can
 specify the parameters of the transiting exoplanet using the same specification
-used by `batman <https://github.com/lkreidberg/batman>`_::
+used by `batman <https://github.com/lkreidberg/batman>`_:
+
+.. code-block:: python
 
     from batman import TransitParams
     import astropy.units as u
@@ -100,7 +108,9 @@ used by `batman <https://github.com/lkreidberg/batman>`_::
     planet.limb_dark = 'quadratic'
     planet.u = [0.5079, 0.2239]
 
-Let's now specify some spots on the stellar surface::
+Let's now specify some spots on the stellar surface:
+
+.. code-block:: python
 
     import numpy as np
 
@@ -109,24 +119,32 @@ Let's now specify some spots on the stellar surface::
     spot_lats = np.array([[0], [0]]) * u.deg
     spot_lons = np.array([[360-30], [30]]) * u.deg
 
-and some times at which to observe the system::
+and some times at which to observe the system:
+
+.. code-block:: python
 
     times = np.linspace(-0.5, 0.5, 500)
 
 let's initialize our `~fleck.Star` object, specifying a stellar rotation
-period::
+period:
+
+.. code-block:: python
 
     from fleck import Star
     star = Star(spot_contrast=0.7, u_ld=planet.u, rotation_period=10)
 
 We generate a light curve using the same `~fleck.Star.light_curve` method that
 we used earlier, but this time we will supply it with the planet's parameters
-and the times at which to evaluate the model::
+and the times at which to evaluate the model:
+
+.. code-block:: python
 
     lc = star.light_curve(spot_lons, spot_lats, spot_radii,
                           inc_stellar, planet=planet, times=times)
 
-Finally we can plot the transit light curve::
+Finally we can plot the transit light curve:
+
+.. code-block:: python
 
     import matplotlib.pyplot as plt
     plt.plot(times, lc, color='k')
@@ -172,7 +190,9 @@ Plotting
 
 You can make quick plots for debugging and understanding a system's geometry
 using the `~fleck.Star.plot` method. For example, let's create a star observed
-at an odd angle, with a misaligned planet::
+at an odd angle, with a misaligned planet:
+
+.. code-block:: python
 
     from batman import TransitParams
     import matplotlib.pyplot as plt
@@ -193,23 +213,30 @@ at an odd angle, with a misaligned planet::
 
 We define the angular offset between the planet's orbit normal and the spin the
 star projected onto the sky plane (often denoted :math:`\lambda`) using the
-extra planet parameter `planet.lam`, in units of degrees::
+extra planet parameter `planet.lam`, in units of degrees:
+
+.. code-block:: python
 
     planet.lam = 45
 
-
 The stellar inclination (measured away from the sub-observer point) often
-denoted :math:`i_s` is defined::
+denoted :math:`i_s` is defined:
+
+.. code-block:: python
 
     inc_stellar = 70 * u.deg
 
-Let's create two spots along one line of longitude::
+Let's create two spots along one line of longitude:
+
+.. code-block:: python
 
     spot_radii = np.array([[0.1], [0.1]])
     spot_lons = np.array([[0], [0]]) * u.deg
     spot_lats = np.array([[25], [-25]]) * u.deg
 
-Let's now observe the system::
+Let's now observe the system:
+
+.. code-block:: python
 
     times = np.linspace(-0.5, 0.5, 500)
 

@@ -130,7 +130,7 @@ def sort_plot_points(xy_coord, k0=0):
     n = len(xy_coord)
     distance_matrix = squareform(pdist(xy_coord, metric='euclidean'))
     mask = np.ones(n, dtype='bool')
-    sorted_order = np.zeros(n, dtype=np.int)
+    sorted_order = np.zeros(n, dtype=int)
     indices = np.arange(n)
 
     i = 0
@@ -443,11 +443,16 @@ class Star(object):
                     # Compute the spot position and ellipsoidal shape
                     r_spot = np.hypot(spot_z, spot_y)
                     angle = np.arctan2(spot_z, spot_y)
-                    ellipse_centroid = [spot_y, spot_z]
+                    ellipse_centroid = np.array([
+                        np.squeeze(spot_y),
+                        np.squeeze(spot_z)
+                    ])
 
-                    ellipse_axes = [spot_radii[i, 0] *
-                                    np.sqrt(1 - r_spot**2),
-                                    spot_radii[i, 0]]
+                    ellipse_axes = np.array([
+                        np.squeeze(spot_radii[i, 0] *
+                                   np.sqrt(1 - r_spot**2)),
+                        np.squeeze(spot_radii[i, 0])
+                    ])
 
                     spot = ellipse(ellipse_centroid, ellipse_axes,
                                    np.degrees(angle))
@@ -532,11 +537,16 @@ class Star(object):
                         # Compute the spot position and ellipsoidal shape
                         r_spot = np.hypot(spot_z, spot_y)
                         angle = np.arctan2(spot_z, spot_y)
-                        ellipse_centroid = [spot_y, spot_z]
+                        ellipse_centroid = np.array([
+                            np.squeeze(spot_y),
+                            np.squeeze(spot_z)
+                        ])
 
-                        ellipse_axes = [spot_radii[i, 0] *
-                                        np.sqrt(1 - r_spot**2),
-                                        spot_radii[i, 0]]
+                        ellipse_axes = np.array([
+                            np.squeeze(spot_radii[i, 0] *
+                                       np.sqrt(1 - r_spot ** 2)),
+                            np.squeeze(spot_radii[i, 0])
+                        ])
 
                         spot = ellipse(ellipse_centroid, ellipse_axes,
                                        np.degrees(angle))
@@ -623,12 +633,18 @@ class Star(object):
                 # Compute the spot position and ellipsoidal shape
                 r_spot = np.hypot(spot_z, spot_y)
                 angle = np.arctan2(spot_z, spot_y)
-                ellipse_centroid = [spot_y, spot_z]
+                ellipse_centroid = np.array([
+                    np.squeeze(spot_y),
+                    np.squeeze(spot_z)
+                ])
 
-                ellipse_axes = [spot_radii[i, 0] *
-                                np.sqrt(1 - r_spot**2),
-                                spot_radii[i, 0]]
+                ellipse_axes = np.array([
+                    np.squeeze(spot_radii[i, 0] *
+                               np.sqrt(1 - r_spot ** 2)),
+                    np.squeeze(spot_radii[i, 0])
+                ])
 
+                print('args', ellipse_centroid, ellipse_axes, angle)
                 spot = ellipse(ellipse_centroid, ellipse_axes,
                                np.degrees(angle))
 
@@ -747,7 +763,7 @@ def generate_spots(min_latitude, max_latitude, spot_radius, n_spots,
     delta_latitude = max_latitude - min_latitude
     if n_inclinations is not None and inclinations is None:
         inc_stellar = np.arccos(np.random.rand(n_inclinations))
-        inc_stellar *= np.sign(np.random.uniform(-1, 1, n_inclinations)) * u.deg
+        inc_stellar = inc_stellar * np.sign(np.random.uniform(-1, 1, n_inclinations)) * u.deg
     else:
         n_inclinations = len(inclinations) if not inclinations.isscalar else 1
         inc_stellar = inclinations
