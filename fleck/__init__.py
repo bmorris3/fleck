@@ -1,14 +1,7 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
-
-from pkg_resources import get_distribution, DistributionNotFound
-
 try:
-    __version__ = get_distribution(__name__).version
-except DistributionNotFound:
-    # package is not installed
-    __version__ = 'dev'
-    pass  # pragma: no cover
-
-del get_distribution, DistributionNotFound
+    from .version import version as __version__
+except ImportError:
+    __version__ = ''
 
 from .core import *
