@@ -52,10 +52,11 @@ copyright = '{0}, {1}'.format(
 __import__(project)
 package = sys.modules[project]
 
-# The short X.Y version.
-version = package.__version__.split('-', 1)[0]
 # The full version, including alpha/beta/rc tags.
-release = package.__version__
+release = __version__
+dev = "dev" in release
+# The short X.Y version.
+version = '.'.join(release.split('.')[:2])
 
 
 # -- Options for HTML output ---------------------------------------------------
