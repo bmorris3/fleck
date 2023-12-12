@@ -1,3 +1,5 @@
+from functools import partial
+
 from jax import jit, numpy as jnp, random, lax
 from jax.tree_util import register_pytree_node_class
 
@@ -21,6 +23,9 @@ empty = jnp.array([])
 
 @register_pytree_node_class
 class ActiveStar:
+    n_mc = 1_000
+    key = random.PRNGKey(0)
+
     def __init__(
         self,
         times=empty,
@@ -34,7 +39,7 @@ class ActiveStar:
         wavelength=None,
         phot=None,
         u_ld=[0, 0],
-        P_rot=3.3,
+        P_rot=3.3
     ):
         self.times = jnp.array(times)
         self.lon = jnp.array(lon)
@@ -62,11 +67,10 @@ class ActiveStar:
             self.wavelength,
             self.phot,
             self.u_ld,
-            self.P_rot
-
+            self.P_rot,
         )
         aux_data = None
-        return (children, aux_data)
+        return children, aux_data
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
@@ -88,38 +92,12 @@ class ActiveStar:
         2. contrast/wavelength
         3. inclination
         """
+        (
+            spot_position_x, spot_position_y, spot_position_z,
+            major_axis, minor_axis, angle, rad, contrast
+        ) = self.spot_coords(t0=t0)
 
-        contrast = self.spectrum / self.phot
-
-        if contrast.ndim == 1:
-            contrast = contrast[None, :]
-
-        phase = jnp.expand_dims(2 * np.pi * (self.times - t0) / self.P_rot, [1, 2, 3])
-        lon = jnp.expand_dims(self.lon, [0, 2, 3])
-        lat = jnp.expand_dims(self.lat, [0, 2, 3])
-        rad = jnp.expand_dims(self.rad, [0, 2, 3])
-        contrast = jnp.expand_dims(contrast, [0, 3])
-        inclination = jnp.expand_dims(jnp.asarray(self.inclination), [0, 1, 2])
-
-        comp_inclination = np.pi / 2 - inclination
-        phi = phase + lon + np.pi / 2
-
-        sin_lat = jnp.sin(lat)
-        cos_lat = jnp.cos(lat)
-        sin_c_inc = jnp.sin(comp_inclination)
-        cos_c_inc = jnp.cos(comp_inclination)
-
-        spot_position_x = (
-            jnp.cos(phi - np.pi / 2) * sin_c_inc * sin_lat +
-            cos_c_inc * cos_lat
-        )
-        spot_position_y = -jnp.sin(phi - np.pi / 2) * sin_lat
-        spot_position_z = (
-            cos_lat * sin_c_inc -
-            jnp.sin(phi) * cos_c_inc * sin_lat
-        )
-
-        rsq = jnp.hypot(spot_position_x, spot_position_y)
+        rsq = spot_position_x ** 2 + spot_position_y ** 2
         mu = jnp.sqrt(1 - rsq)
         mask_behind_star = jnp.where(
             spot_position_z < 0, mu, 0
@@ -156,7 +134,7 @@ class ActiveStar:
         inclination = jnp.expand_dims(jnp.asarray(self.inclination), [0, 1, 2])
 
         comp_inclination = np.pi / 2 - inclination
-        phi = phase + lon + np.pi / 2
+        phi = np.pi / 2 - phase - lon
 
         sin_lat = jnp.sin(lat)
         cos_lat = jnp.cos(lat)
@@ -179,7 +157,10 @@ class ActiveStar:
         minor_axis = rad * jnp.sqrt(1 - rsq)
         angle = -jnp.degrees(jnp.arctan2(spot_position_y, spot_position_x))
 
-        return spot_position_x, spot_position_y, spot_position_z, major_axis, minor_axis, angle
+        return (
+            spot_position_x, spot_position_y, spot_position_z,
+            major_axis, minor_axis, angle, rad, contrast
+        )
 
     def add_spot(self, lon, lat, rad, contrast=None, temperature=None, spectrum=None):
 
@@ -223,7 +204,31 @@ class ActiveStar:
         )
 
     @jit
-    def transit_model(self, t0, period, rp, a, inclination, f_S, omega=np.pi / 2, ecc=0):
+    def transit_model(self, t0, period, rp, a, inclination, omega=np.pi / 2, ecc=0, f0=1):
+        # handle the out-of-transit spectroscopic rotational modulation:
+        (
+            spot_position_x, spot_position_y, spot_position_z,
+            major_axis, minor_axis, angle, rad, contrast
+        ) = self.spot_coords(t0=t0)
+
+        rsq = spot_position_x ** 2 + spot_position_y ** 2
+        mu = jnp.sqrt(1 - rsq)
+        mask_behind_star = jnp.where(
+            spot_position_z < 0, mu, 0
+        )
+
+        # Morris 2020 Eqn 6-7
+        out_of_transit = f0 - jnp.sum(
+            rad ** 2 *
+            (1 - contrast) *
+            self.limb_darkening(mu) / self.limb_darkening(1.0) *
+            mask_behind_star,
+            axis=1
+        )
+
+        f_S = (np.pi * rad ** 2 * jnp.sqrt(1 - rsq)) * (spot_position_z < 0).astype(int)
+
+        # compute the transit model
         mean_anomaly = 2 * np.pi * (self.times - t0) / period
         true_anomaly = jnp.arctan2(*kepler(M=mean_anomaly, ecc=ecc))
 
@@ -242,92 +247,119 @@ class ActiveStar:
             # sum of the active region components:
             jnp.sum(f_S[..., 0] * self.spectrum[None, ...], axis=1, keepdims=True)
         )
-        contamination = 1 + (time_series_spectrum - self.phot[None, :]) / time_series_spectrum
-        transit = light_curve(u=self.u_ld, r=rp, b=jnp.hypot(X, Y), order=4)
+        t_ind = jnp.argmin(jnp.abs(self.times - t0))
+        contaminated_depth = 1 - (
+            time_series_spectrum[t_ind] - rp**2 / (1 - rp**2) * self.phot[None, :]
+        ) / time_series_spectrum[t_ind]
+        contamination = 1 + (time_series_spectrum - photosphere[..., 0]) / time_series_spectrum
 
-        # find where spots are occulted
-        spot_position_x, spot_position_y, spot_position_z, major_axis, minor_axis, angle = self.spot_coords(t0=t0)
-        planet_spot_distance = jnp.hypot(spot_position_y - X[:, None, None, None],
-                                         spot_position_x - Y[:, None, None, None])
-        occultation_possible = np.squeeze(
+        transit = jnp.expand_dims(
+            light_curve(
+                u=self.u_ld,
+                r=rp,
+                b=jnp.hypot(X, Y)[:, None],
+                order=5
+            ), axis=[1, 3]
+        )
+
+        planet_spot_distance = jnp.hypot(
+            spot_position_y - X[:, None, None, None],
+            spot_position_x - Y[:, None, None, None]
+        )
+        occultation_possible = jnp.squeeze(
             (planet_spot_distance < (major_axis + rp)) &
             (spot_position_z < 0)
         )
 
+        @jit
         def time_step(
             carry, j, X=X, Y=Y, spot_position_y=spot_position_y,
             spot_position_x=spot_position_x, major_axis=major_axis,
-            minor_axis=minor_axis, rp=rp, angle=angle, key=key,
+            minor_axis=minor_axis, rp=rp, angle=angle,
             occultation_possible=occultation_possible
         ):
-            def spot_step(
-                carry, k, X=X[j], Y=Y[j], spot_position_y=spot_position_y[j, :, 0, 0],
-                spot_position_x=spot_position_x[j, :, 0, 0],
-                major_axis=major_axis[j, :, 0, 0],
-                minor_axis=minor_axis[j, :, 0, 0], rp=rp, angle=angle[j, :, 0, 0], key=key,
-                occultation_possible=occultation_possible[j]
-            ):
-                return carry, lax.cond(
-                    occultation_possible[k],
-                    lambda x: self.area_union_per_time(
-                        x0_ellipse=jnp.squeeze(spot_position_y[k]),
-                        y0_ellipse=jnp.squeeze(spot_position_x[k]),
-                        x0_circle=X,
-                        y0_circle=Y,
-                        alpha=major_axis[k],
-                        beta=minor_axis[k],
-                        angle=angle[k],
-                        radius=rp,
-                        key=key
-                    ), lambda x: 0.0, 0.0
-                )
+            return carry, lax.cond(
+                jnp.any(occultation_possible[j]),
+                lambda x: self.area_union_per_time(
+                    x0_ellipse=jnp.squeeze(spot_position_y[j]),
+                    y0_ellipse=jnp.squeeze(spot_position_x[j]),
+                    x0_circle=X[j],
+                    y0_circle=Y[j],
+                    alpha=jnp.squeeze(major_axis[j]),
+                    beta=jnp.squeeze(minor_axis[j]),
+                    angle=jnp.squeeze(angle[j]),
+                    radius=rp,
+                    occultation_possible=occultation_possible[j],
+                ),
+                lambda x: jnp.zeros((spot_position_x.shape[1], self.n_mc), dtype=bool),
+                False
+            )
 
-            return carry, lax.scan(
-                spot_step, 0.0, jnp.arange(spot_position_x.shape[1])
-            )[1]
-
-        occultation = lax.scan(
+        occultation_per_time_per_spot_per_mc_sample = lax.scan(
             time_step, 0.0, jnp.arange(self.times.shape[0])
-        )[1]
+        )[1]  # shape: (n_times, n_spots, n_mc_samples)
 
-        contrast = self.spectrum / self.phot
-        contaminated_transit = jnp.expand_dims(transit[:, None, None] / contamination, axis=3)
+        frac_occulted_per_time_per_spot = jnp.count_nonzero(
+            occultation_per_time_per_spot_per_mc_sample, axis=2
+        ) / self.n_mc
+
+        contaminated_transit = transit / contamination[..., None]
 
         occultation = (
-                (1 - contrast[None, ..., None]) *
-                occultation[..., None, None] * rp ** 2
+            (1 - contrast) *
+            jnp.expand_dims(frac_occulted_per_time_per_spot, axis=(2, 3))
         )
 
-        transit_depth_norm = contaminated_transit / contaminated_transit.min(axis=0, keepdims=True)
-        scaled_occultation = transit_depth_norm * occultation
+        scaled_occultation = -contaminated_transit.min(axis=0, keepdims=True) * occultation
+        spectrum_at_transit = time_series_spectrum[t_ind]
 
-        return scaled_occultation.sum(axis=1, keepdims=True) + contaminated_transit, rp ** 2 * contamination, X, Y
+        return (
+            out_of_transit * (1 + jnp.sum(scaled_occultation + contaminated_transit, axis=1)),
+            contaminated_depth, X, Y,
+            spectrum_at_transit
+        )
 
     @jit
     def area_union_per_time(
-            self, x0_ellipse, y0_ellipse, x0_circle, y0_circle,
-            alpha, beta, angle, radius, key=key, n=1_000
+        self, x0_ellipse, y0_ellipse, x0_circle, y0_circle,
+        alpha, beta, angle, radius, occultation_possible,
     ):
         # Monte Carlo sampling for points inside the planet's disk:
+        key, subkey = random.split(self.key)
+        theta_p = random.uniform(key, minval=0, maxval=2 * np.pi, shape=(self.n_mc,))
         key, subkey = random.split(key)
-        theta_p = random.uniform(key, minval=0, maxval=2 * np.pi, shape=(n,))
-        key, subkey = random.split(key)
-        rad_p = random.uniform(key, minval=0, maxval=radius, shape=(n,))
+        rad_p = random.uniform(subkey, minval=0, maxval=radius, shape=(self.n_mc,))
         xp = rad_p * jnp.cos(theta_p) + x0_circle
         yp = rad_p * jnp.sin(theta_p) + y0_circle
-
-        # find overlap between the planet and the elliptical region (projected circular spot)
-        in_ellipse = jnp.hypot(
-            ((xp - x0_ellipse) * jnp.cos(jnp.radians(angle)) +
-             (yp - y0_ellipse) * jnp.sin(jnp.radians(angle))) / alpha,
-            ((xp - x0_ellipse) * jnp.sin(jnp.radians(angle)) -
-             (yp - y0_ellipse) * jnp.cos(jnp.radians(angle))) / beta
-        ) < 1
 
         # ensure overlap only occurs on the stellar surface
         on_star = jnp.hypot(xp, yp) < 1
 
-        return jnp.count_nonzero(in_ellipse & on_star) / n
+        @jit
+        def find_overlap(k):
+            # find overlap between the planet and the elliptical region (projected circular spot)
+            in_ellipse = jnp.hypot(
+                ((xp - x0_ellipse[k]) * jnp.cos(jnp.radians(angle[k])) +
+                 (yp - y0_ellipse[k]) * jnp.sin(jnp.radians(angle[k]))) / alpha[k],
+                ((xp - x0_ellipse[k]) * jnp.sin(jnp.radians(angle[k])) -
+                 (yp - y0_ellipse[k]) * jnp.cos(jnp.radians(angle[k]))) / beta[k]
+            ) < 1
+
+            return in_ellipse & on_star
+
+        @jit
+        def spot_step(carry, k):
+            # where occultations are possible, compute the overlap
+            return carry, lax.cond(
+                occultation_possible[k],
+                lambda x: find_overlap(k),
+                lambda x: jnp.zeros(self.n_mc, dtype=bool),
+                False
+            )
+
+        monte_carlo_occulted_area = lax.scan(spot_step, 0, jnp.arange(x0_ellipse.shape[0]))[1]
+
+        return monte_carlo_occulted_area
 
     def plot_star(self, rp, a, ecc, inclination, t0=0, multiply_radii=1, ax=None):
 
@@ -337,7 +369,10 @@ class ActiveStar:
         log_temps = np.log10(self.temperature)
 
         temp_cmap = lambda x: to_hex(
-            plt.cm.YlOrRd_r((np.log10(x) - min(log_temps)) / (max(log_temps) - min(log_temps)) * 0.6 + 0.4)
+            plt.cm.YlOrRd_r(
+                (np.log10(x) - min(log_temps)) /
+                (max(log_temps) - min(log_temps)) * 0.6 + 0.4
+            )
         )
 
         star = plt.Circle((0, 0), 1, color=to_hex(temp_cmap(self.T_eff)))
@@ -347,20 +382,22 @@ class ActiveStar:
         squeezed_coords = list(map(
             jnp.squeeze, self.spot_coords(times=jnp.array([t0]), t0=t0)
         ))
-        for i, (x, y, z, _, _, angle) in enumerate(zip(*squeezed_coords)):
+        for i, (x, y, z, _, _, _, _, angle) in enumerate(zip(*squeezed_coords)):
             if z < 0:
                 rsq = x ** 2 + y ** 2
 
                 short = np.sqrt(1 - rsq)
                 angle = -np.degrees(np.arctan2(y, x))
                 ell = Ellipse(
-                    (y, x), width=multiply_radii * self.rad[i],
-                    height=multiply_radii * self.rad[i] * short, angle=angle,
+                    (y, x), width=multiply_radii * 2 * self.rad[i],
+                    height=multiply_radii * 2 * self.rad[i] * short, angle=angle,
                     facecolor=temp_cmap(self.temperature[i]), edgecolor='k'
                 )
                 ax.add_patch(ell)
 
-                # ax.annotate(f"{i+1}: {int(temp)} K", (y, x), va='center', ha='center', fontsize=6)
+                # ax.annotate(
+                #   f"{i+1}: {int(temp)} K", (y, x), va='center', ha='center', fontsize=6
+                # )
 
         ax.set_aspect('equal')
 
