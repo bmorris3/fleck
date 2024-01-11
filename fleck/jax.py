@@ -1,6 +1,4 @@
-from functools import partial
-
-from jax import jit, numpy as jnp, random, lax
+from jax import jit, numpy as jnp, random, lax, vmap
 from jax.tree_util import register_pytree_node_class
 
 import numpy as np
@@ -118,7 +116,7 @@ class ActiveStar:
 
     @jit
     def spot_coords(self, times=None, t0=0):
-        contrast = self.spectrum / self.phot
+        contrast = self.spectrum / self.phot[None, :]
 
         if contrast.ndim == 1:
             contrast = contrast[None, :]
@@ -204,12 +202,14 @@ class ActiveStar:
         )
 
     @jit
-    def transit_model(self, t0, period, rp, a, inclination, omega=np.pi / 2, ecc=0, f0=1):
+    def transit_model(self, t0, period, rp, a, inclination, omega=np.pi / 2, ecc=0, f0=1, t0_rot=0,
+                      u1=0, u2=0):
+        u_ld = jnp.column_stack([u1, u2])
         # handle the out-of-transit spectroscopic rotational modulation:
         (
             spot_position_x, spot_position_y, spot_position_z,
             major_axis, minor_axis, angle, rad, contrast
-        ) = self.spot_coords(t0=t0)
+        ) = self.spot_coords(t0=t0_rot)
 
         rsq = spot_position_x ** 2 + spot_position_y ** 2
         mu = jnp.sqrt(1 - rsq)
@@ -232,35 +232,45 @@ class ActiveStar:
         mean_anomaly = 2 * np.pi * (self.times - t0) / period
         true_anomaly = jnp.arctan2(*kepler(M=mean_anomaly, ecc=ecc))
 
-        # winn 2011 eqn 1
+        # Winn 2011 Eqn 1
         r = a * (1 - ecc ** 2) / (1 + ecc * jnp.cos(true_anomaly))
 
-        # winn 2011 eqn 3-4
+        # Winn 2011 Eqn 3-4
         X = -r * jnp.cos(omega + true_anomaly)
         Y = -r * jnp.sin(omega + true_anomaly) * jnp.cos(inclination)
 
-        photosphere = (1 - f_S.sum(1, keepdims=True)) * self.phot[None, None, :, None]
+        photosphere = (1 - f_S[..., 0].sum(axis=1)) * self.phot[None, :]
 
-        time_series_spectrum = (
+        spot_coverages, spot_spectra = jnp.broadcast_arrays(
+            f_S[..., 0], self.spectrum[None, ...]
+        )
+
+        time_series_spectrum = jnp.squeeze(
             # photospheric component:
-            photosphere[..., 0] +
-            # sum of the active region components:
-            jnp.sum(f_S[..., 0] * self.spectrum[None, ...], axis=1, keepdims=True)
-        )
-        t_ind = jnp.argmin(jnp.abs(self.times - t0))
-        contaminated_depth = 1 - (
-            time_series_spectrum[t_ind] - rp**2 / (1 - rp**2) * self.phot[None, :]
-        ) / time_series_spectrum[t_ind]
-        contamination = 1 + (time_series_spectrum - photosphere[..., 0]) / time_series_spectrum
+            photosphere +
 
-        transit = jnp.expand_dims(
-            light_curve(
-                u=self.u_ld,
-                r=rp,
-                b=jnp.hypot(X, Y)[:, None],
-                order=5
-            ), axis=[1, 3]
+            # sum of the active region components:
+            jnp.sum(spot_coverages * spot_spectra, axis=1)
         )
+
+        transit = vmap(
+            lambda u_ld: light_curve(
+                u=u_ld,
+                r=rp,
+                b=jnp.hypot(X, Y)
+            ), in_axes=0, out_axes=1
+        )(u_ld)
+
+        contaminated_transit = (
+            time_series_spectrum - jnp.abs(transit) * self.phot[None, :]
+        ) / time_series_spectrum
+
+        t_ind = jnp.argmin(jnp.abs(self.times - t0))
+        uncontaminated_max_depth = - transit[t_ind]
+        contaminated_max_depth = (contaminated_transit.max(0) - contaminated_transit[t_ind]) / contaminated_transit.max(0)
+
+        depth_ratio = contaminated_max_depth / uncontaminated_max_depth
+        apparent_rprs2 = rp ** 2 * depth_ratio
 
         planet_spot_distance = jnp.hypot(
             spot_position_y - X[:, None, None, None],
@@ -281,8 +291,8 @@ class ActiveStar:
             return carry, lax.cond(
                 jnp.any(occultation_possible[j]),
                 lambda x: self.area_union_per_time(
-                    x0_ellipse=jnp.squeeze(spot_position_y[j]),
-                    y0_ellipse=jnp.squeeze(spot_position_x[j]),
+                    x0_ellipse=spot_position_y[j],
+                    y0_ellipse=spot_position_x[j],
                     x0_circle=X[j],
                     y0_circle=Y[j],
                     alpha=jnp.squeeze(major_axis[j]),
@@ -303,19 +313,17 @@ class ActiveStar:
             occultation_per_time_per_spot_per_mc_sample, axis=2
         ) / self.n_mc
 
-        contaminated_transit = transit / contamination[..., None]
-
         occultation = (
             (1 - contrast) *
             jnp.expand_dims(frac_occulted_per_time_per_spot, axis=(2, 3))
         )
+        scaled_occultation = (1 - contaminated_transit[t_ind]) * jnp.sum(occultation, axis=1)[..., 0]
 
-        scaled_occultation = -contaminated_transit.min(axis=0, keepdims=True) * occultation
         spectrum_at_transit = time_series_spectrum[t_ind]
 
         return (
-            out_of_transit * (1 + jnp.sum(scaled_occultation + contaminated_transit, axis=1)),
-            contaminated_depth, X, Y,
+            out_of_transit[..., 0] * (contaminated_transit + scaled_occultation),
+            apparent_rprs2, X, Y,
             spectrum_at_transit
         )
 
@@ -335,6 +343,13 @@ class ActiveStar:
         # ensure overlap only occurs on the stellar surface
         on_star = jnp.hypot(xp, yp) < 1
 
+        # ensure the one-spot case is indexed correctly below:
+        x0_ellipse = jnp.atleast_1d(x0_ellipse)
+        y0_ellipse = jnp.atleast_1d(y0_ellipse)
+        alpha = jnp.atleast_1d(alpha)
+        beta = jnp.atleast_1d(beta)
+        angle = jnp.atleast_1d(angle)
+
         @jit
         def find_overlap(k):
             # find overlap between the planet and the elliptical region (projected circular spot)
@@ -348,20 +363,24 @@ class ActiveStar:
             return in_ellipse & on_star
 
         @jit
-        def spot_step(carry, k):
+        def spot_step(carry, k, occultation_possible=occultation_possible):
             # where occultations are possible, compute the overlap
+            occultation_possible = jnp.atleast_1d(occultation_possible)
+
             return carry, lax.cond(
                 occultation_possible[k],
-                lambda x: find_overlap(k),
+                lambda x: jnp.squeeze(find_overlap(k)),
                 lambda x: jnp.zeros(self.n_mc, dtype=bool),
                 False
             )
+
 
         monte_carlo_occulted_area = lax.scan(spot_step, 0, jnp.arange(x0_ellipse.shape[0]))[1]
 
         return monte_carlo_occulted_area
 
-    def plot_star(self, rp, a, ecc, inclination, t0=0, multiply_radii=1, ax=None):
+    def plot_star(self, rp, a, ecc, inclination, t0=0, multiply_radii=1,
+                  ax=None, t0_rot=0, annotate=False):
 
         if ax is None:
             ax = plt.gca()
@@ -380,7 +399,7 @@ class ActiveStar:
         ax.set(xlim=[-1.05, 1.05], ylim=[-1.05, 1.05])
 
         squeezed_coords = list(map(
-            jnp.squeeze, self.spot_coords(times=jnp.array([t0]), t0=t0)
+            jnp.squeeze, self.spot_coords(times=jnp.array([t0]), t0=t0_rot)
         ))
         for i, (x, y, z, _, _, _, _, angle) in enumerate(zip(*squeezed_coords)):
             if z < 0:
@@ -395,9 +414,11 @@ class ActiveStar:
                 )
                 ax.add_patch(ell)
 
-                # ax.annotate(
-                #   f"{i+1}: {int(temp)} K", (y, x), va='center', ha='center', fontsize=6
-                # )
+                if annotate:
+                    ax.annotate(
+                      f"{i+1}: {int(self.temperature[i])} K", (y, x),
+                      va='center', ha='center', fontsize=6
+                    )
 
         ax.set_aspect('equal')
 
@@ -459,7 +480,8 @@ def bin_spectrum(spectrum, bins=None, log=True, min=None, max=None, **kwargs):
         ) * u.um
     nans = np.isnan(bs.statistic)
     interp_fluxes = bs.statistic.copy()
-    interp_fluxes[nans] = np.interp(wl_bins[nans], wl_bins[~nans], bs.statistic[~nans])
+    if np.any(nans) and all(map(lambda x: len(x) > 0, [wl_bins[nans], wl_bins[~nans], bs.statistic[~nans]])):
+        interp_fluxes[nans] = np.interp(wl_bins[nans], wl_bins[~nans], bs.statistic[~nans])
     return Spectrum1D(
         flux=interp_fluxes * flux.unit, spectral_axis=wl_bins, meta=spectrum.meta
     )

@@ -33,6 +33,9 @@ docs = [
     "matplotlib",
     "batman-package"
 ]
+jax = [
+    "jax[cpu]"
+]
 
 [project.urls]
 repository = "https://github.com/bmorris3/fleck"
