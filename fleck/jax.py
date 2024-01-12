@@ -1,11 +1,11 @@
 from jax import jit, numpy as jnp, random, lax, vmap
 from jax.tree_util import register_pytree_node_class
+from jax.scipy.integrate import trapezoid
 
 import numpy as np
 
 import astropy.units as u
-from jaxoplanet.core import kepler
-from jaxoplanet.core.limb_dark import light_curve
+import jaxoplanet.core
 
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
@@ -217,20 +217,30 @@ class ActiveStar:
             spot_position_z < 0, mu, 0
         )
 
-        # Morris 2020 Eqn 6-7
-        out_of_transit = f0 - jnp.sum(
-            rad ** 2 *
-            (1 - contrast) *
-            self.limb_darkening(mu) / self.limb_darkening(1.0) *
-            mask_behind_star,
-            axis=1
+        radial_coord = 1 - jnp.geomspace(1e-5, 1, 100)[::-1]
+
+        unspotted_total_flux = trapezoid(
+            y=(
+                2 * np.pi * radial_coord *
+                self.limb_darkening(radial_coord)
+            ),
+            x=radial_coord
         )
 
-        f_S = (np.pi * rad ** 2 * jnp.sqrt(1 - rsq)) * (spot_position_z < 0).astype(int)
+        # Morris 2020 Eqn 6-7
+        out_of_transit = f0 - jnp.sum(
+            np.pi * rad ** 2 *
+            (1 - contrast) *
+            self.limb_darkening(mu) *
+            mask_behind_star,
+            axis=1
+        ) / unspotted_total_flux
+
+        f_S = rad ** 2 * mu * (spot_position_z < 0).astype(int)
 
         # compute the transit model
         mean_anomaly = 2 * np.pi * (self.times - t0) / period
-        true_anomaly = jnp.arctan2(*kepler(M=mean_anomaly, ecc=ecc))
+        true_anomaly = jnp.arctan2(*jaxoplanet.core.kepler(M=mean_anomaly, ecc=ecc))
 
         # Winn 2011 Eqn 1
         r = a * (1 - ecc ** 2) / (1 + ecc * jnp.cos(true_anomaly))
@@ -254,10 +264,8 @@ class ActiveStar:
         )
 
         transit = vmap(
-            lambda u_ld: light_curve(
-                u=u_ld,
-                r=rp,
-                b=jnp.hypot(X, Y)
+            lambda u_ld: jaxoplanet.core.light_curve(
+                u1=u_ld[0], u2=u_ld[1], b=jnp.hypot(X, Y), r=rp
             ), in_axes=0, out_axes=1
         )(u_ld)
 
@@ -267,7 +275,9 @@ class ActiveStar:
 
         t_ind = jnp.argmin(jnp.abs(self.times - t0))
         uncontaminated_max_depth = - transit[t_ind]
-        contaminated_max_depth = (contaminated_transit.max(0) - contaminated_transit[t_ind]) / contaminated_transit.max(0)
+        contaminated_max_depth = (
+            contaminated_transit.max(0) - contaminated_transit[t_ind]
+        ) / contaminated_transit.max(0)
 
         depth_ratio = contaminated_max_depth / uncontaminated_max_depth
         apparent_rprs2 = rp ** 2 * depth_ratio
@@ -317,7 +327,7 @@ class ActiveStar:
             (1 - contrast) *
             jnp.expand_dims(frac_occulted_per_time_per_spot, axis=(2, 3))
         )
-        scaled_occultation = (1 - contaminated_transit[t_ind]) * jnp.sum(occultation, axis=1)[..., 0]
+        scaled_occultation = (1 - contaminated_transit) * jnp.sum(occultation, axis=1)[..., 0]
 
         spectrum_at_transit = time_series_spectrum[t_ind]
 
@@ -374,7 +384,6 @@ class ActiveStar:
                 False
             )
 
-
         monte_carlo_occulted_area = lax.scan(spot_step, 0, jnp.arange(x0_ellipse.shape[0]))[1]
 
         return monte_carlo_occulted_area
@@ -387,12 +396,13 @@ class ActiveStar:
 
         log_temps = np.log10(self.temperature)
 
-        temp_cmap = lambda x: to_hex(
-            plt.cm.YlOrRd_r(
-                (np.log10(x) - min(log_temps)) /
-                (max(log_temps) - min(log_temps)) * 0.6 + 0.4
+        def temp_cmap(x):
+            return to_hex(
+                plt.cm.YlOrRd_r(
+                    (np.log10(x) - min(log_temps)) /
+                    (max(log_temps) - min(log_temps)) * 0.6 + 0.4
+                )
             )
-        )
 
         star = plt.Circle((0, 0), 1, color=to_hex(temp_cmap(self.T_eff)))
         ax.add_patch(star)
@@ -416,8 +426,8 @@ class ActiveStar:
 
                 if annotate:
                     ax.annotate(
-                      f"{i+1}: {int(self.temperature[i])} K", (y, x),
-                      va='center', ha='center', fontsize=6
+                        f"{i+1}: {int(self.temperature[i])} K", (y, x),
+                        va='center', ha='center', fontsize=6
                     )
 
         ax.set_aspect('equal')
@@ -480,7 +490,9 @@ def bin_spectrum(spectrum, bins=None, log=True, min=None, max=None, **kwargs):
         ) * u.um
     nans = np.isnan(bs.statistic)
     interp_fluxes = bs.statistic.copy()
-    if np.any(nans) and all(map(lambda x: len(x) > 0, [wl_bins[nans], wl_bins[~nans], bs.statistic[~nans]])):
+    if np.any(nans) and all(
+        map(lambda x: len(x) > 0, [wl_bins[nans], wl_bins[~nans], bs.statistic[~nans]])
+    ):
         interp_fluxes[nans] = np.interp(wl_bins[nans], wl_bins[~nans], bs.statistic[~nans])
     return Spectrum1D(
         flux=interp_fluxes * flux.unit, spectral_axis=wl_bins, meta=spectrum.meta

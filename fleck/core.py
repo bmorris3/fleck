@@ -269,7 +269,7 @@ class Star(object):
             # Equations 53-55 of Murray & Correia (2010). Note that these
             # coordinates are different from the cartesian coordinates used for
             # the spot positions. In this system, the observer is at X-> -inf.
-            I = np.radians(90 - planet.inc)
+            I = np.radians(90 - planet.inc)  # noqa
             Omega = np.radians(planet.w)  # this is 90 deg by default
             omega = np.pi / 2
             X = planet.a * (np.cos(Omega) * np.cos(omega + f) -

@@ -118,7 +118,7 @@ man_pages = [('index', project.lower(), project + u' Documentation',
 # -- Options for the edit_on_github extension ----------------------------------
 
 # Add additional Sphinx extensions:
-extensions += [
+extensions += [   # noqa
     'matplotlib.sphinxext.plot_directive',
     'sphinx.ext.graphviz'
 ]

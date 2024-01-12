@@ -34,7 +34,9 @@ docs = [
     "batman-package"
 ]
 jax = [
-    "jax[cpu]"
+    "jax[cpu]",
+    "jaxoplanet",
+    "specutils"
 ]
 
 [project.urls]

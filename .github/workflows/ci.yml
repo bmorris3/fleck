@@ -17,9 +17,12 @@ jobs:
     uses: OpenAstronomy/github-actions-workflows/.github/workflows/tox.yml@v1
     with:
       envs: |
-        - name: tests, python 3.10
+        - name: tests, py3.10
           linux: test
           python-version: 3.10
-        - name: tests, python 3.11
+        - name: tests, py3.11
           linux: test
+          python-version: 3.11
+        - name: tests with jax dependency, py3.11
+          linux: test-jax
           python-version: 3.11
