@@ -476,10 +476,12 @@ class Star(object):
                             # planet using shapely's `intersection` method
                             spot_planet_overlap = planet_disk_i.intersection(spots[j]).area
 
-                            intersections[i, j] = ((1 - self.spot_contrast) /
-                                                   spot_ld_factors[j] *
-                                                   spot_planet_overlap /
-                                                   np.pi)
+                            intersections[i, j] = np.squeeze(
+                                (1 - self.spot_contrast) /
+                                spot_ld_factors[j] *
+                                spot_planet_overlap /
+                                np.pi
+                            )
 
                 # Subtract the spot occultation amplitudes from the spotless
                 # transit model that we computed earlier

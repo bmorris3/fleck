@@ -8,3 +8,5 @@ Reference/API
 =============
 
 .. automodapi:: fleck
+
+.. automodapi:: fleck.jax

@@ -18,11 +18,20 @@ key = random.PRNGKey(0)
 
 empty = jnp.array([])
 
+__all__ = [
+    'ActiveStar', 'bin_spectrum'
+]
+
 
 @register_pytree_node_class
 class ActiveStar:
-    n_mc = 1_000
-    key = random.PRNGKey(0)
+    """
+    Model for a star with active regions and rotation, with
+    optional planetary transit models and spot occultations.
+    """
+
+    n_mc = 1_000  # Number of Monte Carlo samples to use when computing planet+spot overlap
+    key = random.PRNGKey(0)  # random key seed
 
     def __init__(
         self,
@@ -39,6 +48,34 @@ class ActiveStar:
         u_ld=[0, 0],
         P_rot=3.3
     ):
+        """
+        Parameters
+        ----------
+        times : array
+            Times at which to compute the flux
+        lon : array
+            Active region longitudes in radians on (0, 2pi)
+        lat : array
+            Active region latitudes in radians on (0, pi)
+        rad : array
+            Active region radii in units of stellar radii
+        spectrum : array
+            One spectrum for each active region
+        T_eff : array
+            Effective temperature of the photosphere
+        temperature : array
+            Effective temperature of the active regions
+        inclination : array
+            Stellar inclination [radians]
+        wavelength : array
+            Wavelength for each flux observation in ``phot`` [meters]
+        phot : array
+            Photospheric flux at each ``wavelength``.
+        u_ld : array
+            Quadratic limb darkening parameters
+        P_rot : float
+            Stellar rotation period
+        """
         self.times = jnp.array(times)
         self.lon = jnp.array(lon)
         self.lat = jnp.array(lat)
@@ -75,7 +112,101 @@ class ActiveStar:
         return cls(*children)
 
     @jit
-    def rotation_model(self, f0=0, t0=0):
+    def rotation_model(self, f0=0, t0_rot=0):
+        """
+        Spectrophotometry of stellar rotation.
+
+        Parameters
+        ----------
+        f0 : float
+            Baseline flux of an unspotted star (usually zero or one)
+        t0_rot : float
+            Zero-point reference time for stellar rotation
+
+        Returns
+        -------
+        spot_model : array
+            Flux as a function of time and wavelength
+
+        """
+        (
+            spot_position_x, spot_position_y, spot_position_z,
+            major_axis, minor_axis, angle, rad, contrast
+        ) = self.spot_coords(t0_rot=t0_rot)
+
+        rsq = spot_position_x ** 2 + spot_position_y ** 2
+        mu = jnp.sqrt(1 - rsq)
+        mask_behind_star = jnp.where(
+            spot_position_z < 0, mu, 0
+        )
+
+        radial_coord = 1 - jnp.geomspace(1e-5, 1, 100)[::-1]
+        unspotted_total_flux = trapezoid(
+            y=(
+                2 * np.pi * radial_coord *
+                self.limb_darkening(radial_coord)
+            ),
+            x=radial_coord
+        )
+
+        # Morris 2020 Eqn 6-7
+        spot_model = f0 - jnp.sum(
+            np.pi * rad ** 2 *
+            (1 - contrast) *
+            self.limb_darkening(mu) *
+            mask_behind_star,
+            axis=1
+        ) / unspotted_total_flux
+        f_S = rad ** 2 * mu * (spot_position_z < 0).astype(int)
+
+        return spot_model, f_S
+
+    @jit
+    def spot_coords(self, times=None, t0_rot=0):
+        """
+        Compute the spatial coordinates and projected dimensions of
+        active regions.
+
+        Parameters
+        ----------
+        times : array
+            Times on which to compute spectrophotometry
+        t0_rot : float
+            Zero-point reference time for stellar rotation
+
+        Returns
+        -------
+        spot_position_x : array
+            x-position of the active region in the observer oriented coordinate system [1]_.
+        spot_position_y : array
+            y-position of the active region in the observer oriented coordinate system [1]_.
+        spot_position_z : array
+            y-position of the active region in the observer oriented coordinate system [1]_.
+        major_axis : array
+            Apparent semimajor axis of the circular active region, which is elliptical when
+            projected active onto the sky plane (in general)
+        minor_axis : array
+            Apparent semiminor axis of the circular active region, which is elliptical when
+            projected active onto the sky plane (in general)
+        angle : array
+            Angle between the +x-axis and the projected active region's semimajor axis
+        rad : array
+            Active region radius [stellar radii]
+        contrast: array
+            Ratio of the active region spectrum and the photosphere spectrum
+
+        References
+        ----------
+        .. [1]  Fabrycky & Winn (2009) https://arxiv.org/abs/0902.0737
+        """
+        contrast = self.spectrum / self.phot[None, :]
+
+        if contrast.ndim == 1:
+            contrast = contrast[None, :]
+
+        if times is None:
+            times = self.times
+
         """
         Limits:
         lat: (0, pi)
@@ -90,41 +221,7 @@ class ActiveStar:
         2. contrast/wavelength
         3. inclination
         """
-        (
-            spot_position_x, spot_position_y, spot_position_z,
-            major_axis, minor_axis, angle, rad, contrast
-        ) = self.spot_coords(t0=t0)
-
-        rsq = spot_position_x ** 2 + spot_position_y ** 2
-        mu = jnp.sqrt(1 - rsq)
-        mask_behind_star = jnp.where(
-            spot_position_z < 0, mu, 0
-        )
-
-        # Morris 2020 Eqn 6-7
-        spot_model = f0 - jnp.sum(
-            rad ** 2 *
-            (1 - contrast) *
-            self.limb_darkening(mu) / self.limb_darkening(1.0) *
-            mask_behind_star,
-            axis=1
-        )
-
-        f_S = (np.pi * rad ** 2 * jnp.sqrt(1 - rsq)) * (spot_position_z < 0).astype(int)
-
-        return spot_model, f_S
-
-    @jit
-    def spot_coords(self, times=None, t0=0):
-        contrast = self.spectrum / self.phot[None, :]
-
-        if contrast.ndim == 1:
-            contrast = contrast[None, :]
-
-        if times is None:
-            times = self.times
-
-        phase = jnp.expand_dims(2 * np.pi * (times - t0) / self.P_rot, [1, 2, 3])
+        phase = jnp.expand_dims(2 * np.pi * (times - t0_rot) / self.P_rot, [1, 2, 3])
         lon = jnp.expand_dims(self.lon, [0, 2, 3])
         lat = jnp.expand_dims(self.lat, [0, 2, 3])
         rad = jnp.expand_dims(self.rad, [0, 2, 3])
@@ -161,7 +258,24 @@ class ActiveStar:
         )
 
     def add_spot(self, lon, lat, rad, contrast=None, temperature=None, spectrum=None):
+        """
+        Add an active region to the stellar model.
 
+        Parameters
+        ----------
+        lon : float
+            Active region longitudes in radians on (0, 2pi)
+        lat : float
+            Active region latitudes in radians on (0, pi)
+        rad : float
+            Active region radii in units of stellar radii
+        contrast : float
+            Ratio of the active region's flux to the photospheric
+            flux at each ``ActiveStar.wavelength``
+        spectrum : float
+            The spectrum of the active region on the same wavelength
+            grid is ``ActiveStar.phot``
+        """
         if contrast is None and spectrum is None and temperature is not None:
             self.phot = self._blackbody(self.wavelength, self.T_eff)
             spectrum = self._blackbody(self.wavelength, temperature)
@@ -184,6 +298,9 @@ class ActiveStar:
 
     @jit
     def _blackbody(self, wavelength_meters, temperature):
+        """
+        Compute a blackbody spectrum.
+        """
         h = 6.62607015e-34  # J s
         c = 299792458.0  # m/s
         k_B = 1.380649e-23  # J/K
@@ -195,6 +312,9 @@ class ActiveStar:
 
     @jit
     def limb_darkening(self, mu):
+        """
+        Compute quadratic limb darkening as a function of :math:`\\mu`.
+        """
         return (
             1 / np.pi *
             (1 - self.u_ld[0] * (1 - mu) - self.u_ld[1] * (1 - mu) ** 2) /
@@ -202,14 +322,59 @@ class ActiveStar:
         )
 
     @jit
-    def transit_model(self, t0, period, rp, a, inclination, omega=np.pi / 2, ecc=0, f0=1, t0_rot=0,
+    def transit_model(self, t0, period, rp, a, inclination,
+                      omega=np.pi / 2, ecc=0, f0=1, t0_rot=0,
                       u1=0, u2=0):
+        """
+        Compute spectrophotometry with rotation and a planetary transit.
+
+        Parameters
+        ----------
+        t0 : float
+            Mid-transit time
+        period : float
+            Orbital period of the transiting planet
+        rp : float
+            Exoplanet radius in units of stellar radii
+        a : float
+            Planetary semi-major axis in units of stellar radii
+        inclination : float
+            Planetary orbital inclination [radians]
+        omega : float
+            Argument of periapse [radians], default is :math:`\\pi/2`.
+        ecc : float
+            Orbital eccentricity, default is zero.
+        f0 : float
+            Out-of-transit flux for an unspotted star, default is one.
+        t0_rot : float
+            Zero-point in time for stellar rotation, default is zero
+        u1 : float
+            Limb-darkening parameter :math:`u_1`
+        u2 : float
+            Limb-darkening parameter :math:`u_2`
+
+        Returns
+        -------
+        lc : array
+            Flux as a function of time and wavelength
+        apparent_rprs2 : array
+            The apparent squared ratio of planet-to-star radius with stellar
+            spectral contamination by active regions
+         X : array
+            x-position of the planet in the observer oriented coordinate system [1]_
+         Y : array
+            y-position of the planet in the observer oriented coordinate system [1]_
+
+        References
+        ----------
+        .. [1]  Fabrycky & Winn (2009) https://arxiv.org/abs/0902.0737
+        """
         u_ld = jnp.column_stack([u1, u2])
         # handle the out-of-transit spectroscopic rotational modulation:
         (
             spot_position_x, spot_position_y, spot_position_z,
             major_axis, minor_axis, angle, rad, contrast
-        ) = self.spot_coords(t0=t0_rot)
+        ) = self.spot_coords(t0_rot=t0_rot)
 
         rsq = spot_position_x ** 2 + spot_position_y ** 2
         mu = jnp.sqrt(1 - rsq)
@@ -300,7 +465,7 @@ class ActiveStar:
         ):
             return carry, lax.cond(
                 jnp.any(occultation_possible[j]),
-                lambda x: self.area_union_per_time(
+                lambda x: self._area_union_per_time(
                     x0_ellipse=spot_position_y[j],
                     y0_ellipse=spot_position_x[j],
                     x0_circle=X[j],
@@ -338,7 +503,7 @@ class ActiveStar:
         )
 
     @jit
-    def area_union_per_time(
+    def _area_union_per_time(
         self, x0_ellipse, y0_ellipse, x0_circle, y0_circle,
         alpha, beta, angle, radius, occultation_possible,
     ):
@@ -388,8 +553,35 @@ class ActiveStar:
 
         return monte_carlo_occulted_area
 
-    def plot_star(self, rp, a, ecc, inclination, t0=0, multiply_radii=1,
-                  ax=None, t0_rot=0, annotate=False):
+    def plot_star(self, rp, a, inclination,
+                  ecc=0, t0=0, t0_rot=0, multiply_radii=1,
+                  ax=None, annotate=False):
+        """
+        Plot a 2D representation of the star and transit chord.
+
+        Parameters
+        ----------
+        rp : float
+            Exoplanet radius in units of stellar radii
+        a : float
+            Planetary semi-major axis in units of stellar radii
+        inclination : float
+            Planetary orbital inclination [radians]
+        ecc : float
+            Orbital eccentricity, default is zero.
+        t0 : float
+            Mid-transit time
+        t0_rot : float
+            Zero-point in time for stellar rotation, default is zero
+        multiply_radii : float
+            Visually represent scaled-up active regions where the radii are increased
+            by factor ``multiply_radii``, default is one.
+        ax : matplotlib.axes.Axes
+            Add the visualization to this matplotlib axis
+        annotate : bool
+            Add a text label with active region indices and temperatures
+            to the visualization
+        """
 
         if ax is None:
             ax = plt.gca()
@@ -409,7 +601,7 @@ class ActiveStar:
         ax.set(xlim=[-1.05, 1.05], ylim=[-1.05, 1.05])
 
         squeezed_coords = list(map(
-            jnp.squeeze, self.spot_coords(times=jnp.array([t0]), t0=t0_rot)
+            jnp.squeeze, self.spot_coords(times=jnp.array([t0]), t0_rot=t0_rot)
         ))
         for i, (x, y, z, _, _, _, _, angle) in enumerate(zip(*squeezed_coords)):
             if z < 0:
@@ -446,12 +638,11 @@ class ActiveStar:
 
 def bin_spectrum(spectrum, bins=None, log=True, min=None, max=None, **kwargs):
     """
-
     Bin a spectrum, with log-spaced frequency bins.
 
     Parameters
     ----------
-    spectrum :
+    spectrum : `specutils.Spectrum1D`
     log : bool
         If true, compute bin edges based on the log base 10 of
         the frequency.
