@@ -1,12 +1,11 @@
 [project]
 name = "fleck"
-description = "Exposure time calculator for APO/ARCES"
+description = "Fast approximate spectrophotometry for active stars"
 readme = "README.rst"
-requires-python = ">=3.5"
+requires-python = ">=3.10"
 license = { file = "LICENSE", content-type = "text/plain" }
 authors = [
   { name = "Brett Morris", email = "morrisbrettm@gmail.com" },
-  { name = "Trevor Dorn-Wallenstein"},
 ]
 dependencies = [
   "astropy",

@@ -152,24 +152,11 @@ html_context = {
     "doc_path": "docs",
 }
 
-#
-# Some warnings are impossible to suppress, and you can list specific references
-# that should be ignored in a nitpick-exceptions file which should be inside
-# the docs/ directory. The format of the file should be:
-#
-# <type> <class>
-#
-# for example:
-#
-# py:class astropy.io.votable.tree.Element
-# py:class astropy.io.votable.tree.SimpleElement
-# py:class astropy.io.votable.tree.SimpleElementWithContent
-#
-# Uncomment the following lines to enable the exceptions:
-#
-# for line in open('nitpick-exceptions'):
-#     if line.strip() == "" or line.startswith("#"):
-#         continue
-#     dtype, target = line.split(None, 1)
-#     target = target.strip()
-#     nitpick_ignore.append((dtype, six.u(target)))
+html_logo = "logo/logo.png"
+html_favicon = "logo/logo.ico"
+
+autosectionlabel_prefix_document = True
+autoclass_content = 'both'
+
+numpydoc_show_class_members = False
+autodoc_inherit_docstrings = True
