@@ -269,7 +269,7 @@ class Star(object):
             # Equations 53-55 of Murray & Correia (2010). Note that these
             # coordinates are different from the cartesian coordinates used for
             # the spot positions. In this system, the observer is at X-> -inf.
-            I = np.radians(90 - planet.inc)
+            I = np.radians(90 - planet.inc)  # noqa
             Omega = np.radians(planet.w)  # this is 90 deg by default
             omega = np.pi / 2
             X = planet.a * (np.cos(Omega) * np.cos(omega + f) -
@@ -476,10 +476,12 @@ class Star(object):
                             # planet using shapely's `intersection` method
                             spot_planet_overlap = planet_disk_i.intersection(spots[j]).area
 
-                            intersections[i, j] = ((1 - self.spot_contrast) /
-                                                   spot_ld_factors[j] *
-                                                   spot_planet_overlap /
-                                                   np.pi)
+                            intersections[i, j] = np.squeeze(
+                                (1 - self.spot_contrast) /
+                                spot_ld_factors[j] *
+                                spot_planet_overlap /
+                                np.pi
+                            )
 
                 # Subtract the spot occultation amplitudes from the spotless
                 # transit model that we computed earlier

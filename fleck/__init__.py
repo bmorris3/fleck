@@ -4,4 +4,4 @@ try:
 except ImportError:
     __version__ = ''
 
-from .core import *
+from .core import *  # noqa
