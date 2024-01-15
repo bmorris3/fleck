@@ -45,7 +45,6 @@ class ActiveStar:
         inclination=empty,
         wavelength=None,
         phot=None,
-        u_ld=[0, 0],
         P_rot=3.3
     ):
         """
@@ -71,8 +70,6 @@ class ActiveStar:
             Wavelength for each flux observation in ``phot`` [meters]
         phot : array
             Photospheric flux at each ``wavelength``.
-        u_ld : array
-            Quadratic limb darkening parameters
         P_rot : float
             Stellar rotation period
         """
@@ -86,7 +83,6 @@ class ActiveStar:
         self.inclination = inclination
         self.wavelength = wavelength
         self.phot = phot
-        self.u_ld = u_ld
         self.P_rot = P_rot
 
     def tree_flatten(self):
@@ -101,7 +97,6 @@ class ActiveStar:
             self.inclination,
             self.wavelength,
             self.phot,
-            self.u_ld,
             self.P_rot,
         )
         aux_data = None
@@ -112,7 +107,7 @@ class ActiveStar:
         return cls(*children)
 
     @jit
-    def rotation_model(self, f0=0, t0_rot=0):
+    def rotation_model(self, f0=0, t0_rot=0, u1=0, u2=0):
         """
         Spectrophotometry of stellar rotation.
 
@@ -127,7 +122,6 @@ class ActiveStar:
         -------
         spot_model : array
             Flux as a function of time and wavelength
-
         """
         (
             spot_position_x, spot_position_y, spot_position_z,
@@ -144,7 +138,7 @@ class ActiveStar:
         unspotted_total_flux = trapezoid(
             y=(
                 2 * np.pi * radial_coord *
-                self.limb_darkening(radial_coord)
+                self.limb_darkening(radial_coord, u1, u2)
             ),
             x=radial_coord
         )
@@ -153,7 +147,7 @@ class ActiveStar:
         spot_model = f0 - jnp.sum(
             np.pi * rad ** 2 *
             (1 - contrast) *
-            self.limb_darkening(mu) *
+            self.limb_darkening(mu, u1, u2) *
             mask_behind_star,
             axis=1
         ) / unspotted_total_flux
@@ -221,6 +215,7 @@ class ActiveStar:
         2. contrast/wavelength
         3. inclination
         """
+
         phase = jnp.expand_dims(2 * np.pi * (times - t0_rot) / self.P_rot, [1, 2, 3])
         lon = jnp.expand_dims(self.lon, [0, 2, 3])
         lat = jnp.expand_dims(self.lat, [0, 2, 3])
@@ -311,14 +306,14 @@ class ActiveStar:
         )
 
     @jit
-    def limb_darkening(self, mu):
+    def limb_darkening(self, mu, u1, u2):
         """
         Compute quadratic limb darkening as a function of :math:`\\mu`.
         """
         return (
             1 / np.pi *
-            (1 - self.u_ld[0] * (1 - mu) - self.u_ld[1] * (1 - mu) ** 2) /
-            (1 - self.u_ld[0] / 3 - self.u_ld[1] / 6)
+            (1 - u1 * (1 - mu) - u2 * (1 - mu) ** 2) /
+            (1 - u1 / 3 - u2 / 6)
         )
 
     @jit
@@ -327,6 +322,9 @@ class ActiveStar:
                       u1=0, u2=0):
         """
         Compute spectrophotometry with rotation and a planetary transit.
+
+        The transit is computed with ``jaxoplanet`` for a star with
+        quadratic limb darkening.
 
         Parameters
         ----------
@@ -361,13 +359,13 @@ class ActiveStar:
             The apparent squared ratio of planet-to-star radius with stellar
             spectral contamination by active regions
          X : array
-            x-position of the planet in the observer oriented coordinate system [1]_
+            x-position of the planet in the observer oriented coordinate system [1]_.
          Y : array
-            y-position of the planet in the observer oriented coordinate system [1]_
+            y-position of the planet in the observer oriented coordinate system [1]_.
 
         References
         ----------
-        .. [1]  Fabrycky & Winn (2009) https://arxiv.org/abs/0902.0737
+        .. [1] Fabrycky & Winn (2009) https://arxiv.org/abs/0902.0737
         """
         u_ld = jnp.column_stack([u1, u2])
         # handle the out-of-transit spectroscopic rotational modulation:
@@ -387,7 +385,7 @@ class ActiveStar:
         unspotted_total_flux = trapezoid(
             y=(
                 2 * np.pi * radial_coord *
-                self.limb_darkening(radial_coord)
+                self.limb_darkening(radial_coord, u1, u2)
             ),
             x=radial_coord
         )
@@ -396,7 +394,7 @@ class ActiveStar:
         out_of_transit = f0 - jnp.sum(
             np.pi * rad ** 2 *
             (1 - contrast) *
-            self.limb_darkening(mu) *
+            self.limb_darkening(mu, u1, u2) *
             mask_behind_star,
             axis=1
         ) / unspotted_total_flux
@@ -553,14 +551,16 @@ class ActiveStar:
 
         return monte_carlo_occulted_area
 
-    def plot_star(self, rp, a, inclination,
-                  ecc=0, t0=0, t0_rot=0, multiply_radii=1,
+    def plot_star(self, t0, rp, a, inclination,
+                  ecc=0, t0_rot=0, multiply_radii=1,
                   ax=None, annotate=False):
         """
         Plot a 2D representation of the star and transit chord.
 
         Parameters
         ----------
+        t0 : float
+            Mid-transit time
         rp : float
             Exoplanet radius in units of stellar radii
         a : float
@@ -569,8 +569,6 @@ class ActiveStar:
             Planetary orbital inclination [radians]
         ecc : float
             Orbital eccentricity, default is zero.
-        t0 : float
-            Mid-transit time
         t0_rot : float
             Zero-point in time for stellar rotation, default is zero
         multiply_radii : float

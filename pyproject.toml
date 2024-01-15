@@ -30,8 +30,10 @@ docs = [
     "tomli; python_version <\"3.11\"",
     "sphinx-astropy[confv2]",
     "sphinx-rtd-theme",
+    "sphinx-toolbox",
     "matplotlib",
-    "batman-package"
+    "batman-package",
+    "expecto",
 ]
 jax = [
     "jax[cpu]",
