@@ -367,6 +367,8 @@ class ActiveStar:
         ----------
         .. [1] Fabrycky & Winn (2009) https://arxiv.org/abs/0902.0737
         """
+        u1 = jnp.atleast_1d(u1)
+        u2 = jnp.atleast_1d(u2)
         u_ld = jnp.column_stack([u1, u2])
         # handle the out-of-transit spectroscopic rotational modulation:
         (
@@ -384,26 +386,37 @@ class ActiveStar:
 
         unspotted_total_flux = trapezoid(
             y=(
-                2 * np.pi * radial_coord *
-                self.limb_darkening(radial_coord, u1, u2)
-            ),
+                2 * np.pi * radial_coord[:, None] *
+                self.limb_darkening(
+                    radial_coord[:, None], *u_ld.T
+                )
+            ).T,
             x=radial_coord
+        )
+
+        limb_dark = self.limb_darkening(
+            mu,
+            u1=u1[None, None, :, None],
+            u2=u2[None, None, :, None]
         )
 
         # Morris 2020 Eqn 6-7
         out_of_transit = f0 - jnp.sum(
             np.pi * rad ** 2 *
             (1 - contrast) *
-            self.limb_darkening(mu, u1, u2) *
-            mask_behind_star,
+            limb_dark *
+            mask_behind_star /
+            unspotted_total_flux[None, None, :, None],
             axis=1
-        ) / unspotted_total_flux
+        )
 
         f_S = rad ** 2 * mu * (spot_position_z < 0).astype(int)
 
         # compute the transit model
         mean_anomaly = 2 * np.pi * (self.times - t0) / period
-        true_anomaly = jnp.arctan2(*jaxoplanet.core.kepler(M=mean_anomaly, ecc=ecc))
+        true_anomaly = jnp.arctan2(
+            *jaxoplanet.core.kepler(M=mean_anomaly, ecc=ecc)
+        )
 
         # Winn 2011 Eqn 1
         r = a * (1 - ecc ** 2) / (1 + ecc * jnp.cos(true_anomaly))
