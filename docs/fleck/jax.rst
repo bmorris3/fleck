@@ -2,6 +2,13 @@
 JAX Interface
 *************
 
+.. warning::
+
+    If you install ``fleck`` via pip, you may not have the ``jax``
+    dependencies necessary for this module. To ensure that you do,
+    follow the instructions for ``jax`` compatibility in :doc:`installation`.
+
+
 Intro
 =====
 
@@ -10,6 +17,17 @@ of TRAPPIST-1 c, assuming the planet has no atmosphere and
 the transmission spectrum changes with wavelength due only to
 stellar surface features. We will place one warm and one cool
 active region on the photosphere,
+
+.. note::
+
+    This tutorial depends on the package ``expecto``
+    (`code <https://github.com/bmorris3/expecto>`_,
+    `docs <https://expecto.readthedocs.io/>`_). You can
+    install ``expecto`` via pip with:
+
+    .. code-block:: bash
+
+        python -m pip install expecto
 
 First, we need to import some things,
 
@@ -33,8 +51,8 @@ spectrophotometry for our active star+planet model,
     times = np.linspace(-0.04, 0.04, 250)
     wavelength = np.geomspace(0.5, 5, 101) * u.um
 
-Adding spectral contamination
-=============================
+Choose active region spectra
+----------------------------
 
 Active regions emit spectra that are distinct from the photosphere.
 In this model, we will use three PHOENIX model spectra, downloaded
@@ -163,6 +181,9 @@ it to expand.
 
     <br />
 
+Construct a model for an active star
+------------------------------------
+
 Now we define our `~fleck.jax.ActiveStar` model by the specific times and wavelengths
 that we will observe, the stellar inclination, and spectrum of the stellar photosphere.
 
@@ -199,6 +220,9 @@ We can add active regions to the star with `~fleck.jax.ActiveStar.add_spot`
         spectrum=hot.flux.value,
         temperature=hot.meta['PHXTEFF']
     )
+
+Add a transiting planet with spot occultations
+----------------------------------------------
 
 In order to model the transit of a planet, we need to define the
 planet's parameters like so:
