@@ -10,7 +10,7 @@ JAX Interface
 
 
 Intro
-=====
+-----
 
 We're going to compute the transmission spectrum for a transit
 of TRAPPIST-1 c, assuming the planet has no atmosphere and
