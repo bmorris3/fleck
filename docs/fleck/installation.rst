@@ -26,3 +26,20 @@ If you are ready to use `JAX <https://github.com/google/jax>`_ in the
 can get those dependencies at install time with::
 
     python -m pip install -e .[jax]
+
+.. note::
+
+    Known issue for M2 Macs: as of January 2024, pip will install a version of jaxlib 
+    that may not work, raising the following error::
+
+        RuntimeError: This version of jaxlib was built using AVX instructions, which your CPU and/or operating system do not support.
+
+    The easiest workaround is to uninstall this version of jax with::
+
+        pip uninstall jax jaxlib
+    
+    and then install jax via conda::
+
+        conda install -c conda-forge jaxlib
+        conda install -c conda-forge jax
+    
