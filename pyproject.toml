@@ -33,6 +33,10 @@ docs = [
     "matplotlib",
     "batman-package",
     "expecto",
+    "lightkurve",
+    "healpy",
+    "emcee",
+    "corner",
 ]
 jax = [
     "jax[cpu]",
