@@ -26,6 +26,12 @@ First, we import all of the required packages for this tutorial::
     from corner import corner
     from fleck import Star
 
+.. note::
+
+    These examples require a few extra dependencies, get them with::
+
+	pip install fleck[docs]   
+
 Next we resolve the target coordinates using astropy, and download its light
 curve using ``lightkurve``'s handy method::
 
