@@ -20,7 +20,7 @@ First, we import all of the required packages for this tutorial::
     from astropy.timeseries import LombScargle
     import astropy.units as u
     import healpy as hp
-    from lightkurve import search_lightcurvefile
+    from lightkurve import search_lightcurve
     from emcee import EnsembleSampler
     from multiprocessing import Pool
     from corner import corner
@@ -36,7 +36,7 @@ Next we resolve the target coordinates using astropy, and download its light
 curve using ``lightkurve``'s handy method::
 
     coord = SkyCoord.from_name('V1298 Tau')
-    slcf = search_lightcurvefile(coord, mission='K2')
+    slcf = search_lightcurve(coord, mission='K2')
 
     lc = slcf.download_all()
     pdcsap = lc.PDCSAP_FLUX.stitch()
