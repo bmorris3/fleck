@@ -123,6 +123,10 @@ class ActiveStar:
         spot_model : array
             Flux as a function of time and wavelength
         """
+        u1 = jnp.atleast_1d(u1)
+        u2 = jnp.atleast_1d(u2)
+        u_ld = jnp.column_stack([u1, u2])
+
         (
             spot_position_x, spot_position_y, spot_position_z,
             major_axis, minor_axis, angle, rad, contrast
@@ -135,22 +139,32 @@ class ActiveStar:
         )
 
         radial_coord = 1 - jnp.geomspace(1e-5, 1, 100)[::-1]
+
         unspotted_total_flux = trapezoid(
             y=(
-                2 * np.pi * radial_coord *
-                self.limb_darkening(radial_coord, u1, u2)
-            ),
+                2 * np.pi * radial_coord[:, None] *
+                self.limb_darkening(
+                    radial_coord[:, None], *u_ld.T
+                )
+            ).T,
             x=radial_coord
+        )
+
+        limb_dark = self.limb_darkening(
+            mu,
+            u1=u1[None, None, :, None],
+            u2=u2[None, None, :, None]
         )
 
         # Morris 2020 Eqn 6-7
         spot_model = f0 - jnp.sum(
             np.pi * rad ** 2 *
             (1 - contrast) *
-            self.limb_darkening(mu, u1, u2) *
-            mask_behind_star,
+            limb_dark *
+            mask_behind_star /
+            unspotted_total_flux[None, None, :, None],
             axis=1
-        ) / unspotted_total_flux
+        )
         f_S = rad ** 2 * mu * (spot_position_z < 0).astype(int)
 
         return spot_model, f_S
@@ -272,24 +286,22 @@ class ActiveStar:
             grid is ``ActiveStar.phot``
         """
         if contrast is None and spectrum is None and temperature is not None:
-            self.phot = self._blackbody(self.wavelength, self.T_eff)
+            if self.phot is None:
+                self.phot = self._blackbody(self.wavelength, self.T_eff)
             spectrum = self._blackbody(self.wavelength, temperature)
 
         for attr, new_value in zip("lon, lat, rad, spectrum, temperature".split(', '),
                                    [lon, lat, rad, spectrum, temperature]):
-
             prop = getattr(self, attr)
 
-            if not hasattr(new_value, 'ndim'):
-                new_value = jnp.array([new_value])
+            new_value = jnp.atleast_1d(new_value)
 
-            if prop is not None:
-                if prop.ndim > 1 or (len(prop) > 1 and len(prop) == len(new_value)):
+            if attr == 'spectrum':
+                if len(prop):
                     new_value = jnp.vstack([prop, new_value])
-                else:
-                    new_value = jnp.concatenate([prop, new_value])
-
-                setattr(self, attr, new_value)
+            elif len(prop.shape) and len(new_value.shape):
+                new_value = jnp.concatenate([prop, new_value])
+            setattr(self, attr, new_value)
 
     @jit
     def _blackbody(self, wavelength_meters, temperature):
@@ -509,7 +521,7 @@ class ActiveStar:
 
         return (
             out_of_transit[..., 0] * (contaminated_transit + scaled_occultation),
-            apparent_rprs2, X, Y,
+            apparent_rprs2, out_of_transit[..., 0], (contaminated_transit + scaled_occultation),
             spectrum_at_transit
         )
 
