@@ -451,11 +451,17 @@ class ActiveStar:
             jnp.sum(spot_coverages * spot_spectra, axis=1)
         )
 
+        # if rp is scalar, turn it into a vector with length == N_wavelengths:
+        rp = rp * jnp.ones(u1.shape[0])
+
         transit = vmap(
-            lambda u_ld: jaxoplanet.core.light_curve(
-                u1=u_ld[0], u2=u_ld[1], b=jnp.hypot(X, Y), r=rp
+            lambda u_ld, rp: jaxoplanet.core.light_curve(
+                u1=u_ld[0],
+                u2=u_ld[1],
+                b=jnp.hypot(X, Y),
+                r=rp
             ), in_axes=0, out_axes=1
-        )(u_ld)
+        )(u_ld, rp)
 
         contaminated_transit = (
             time_series_spectrum - jnp.abs(transit) * self.phot[None, :]
@@ -475,7 +481,7 @@ class ActiveStar:
             spot_position_x - Y[:, None, None, None]
         )
         occultation_possible = jnp.squeeze(
-            (planet_spot_distance < (major_axis + rp)) &
+            (planet_spot_distance < (major_axis + rp.mean())) &
             (spot_position_z < 0)
         )
 
@@ -483,7 +489,7 @@ class ActiveStar:
         def time_step(
             carry, j, X=X, Y=Y, spot_position_y=spot_position_y,
             spot_position_x=spot_position_x, major_axis=major_axis,
-            minor_axis=minor_axis, rp=rp, angle=angle,
+            minor_axis=minor_axis, rp=rp.mean(), angle=angle,
             occultation_possible=occultation_possible
         ):
             return carry, lax.cond(
