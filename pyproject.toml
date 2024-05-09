@@ -40,7 +40,7 @@ docs = [
 ]
 jax = [
     "jax[cpu]",
-    "jaxoplanet",
+    "jaxoplanet == 0.0.1",
     "specutils"
 ]
 
