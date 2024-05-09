@@ -121,7 +121,7 @@ class ActiveStar:
         Returns
         -------
         spot_model : array
-            Flux as a function of time and wavelength
+            Relative flux as a function of time and wavelength
         """
         (
             spot_position_x, spot_position_y, spot_position_z,
@@ -645,6 +645,47 @@ class ActiveStar:
         ax.axis('off')
 
         return ax
+
+    @jit
+    def rotation_spectrum(self, t0_rot=0):
+        """
+        Compute spectrophotometry during a rotation.
+
+        Parameters
+        ----------
+        t0_rot : float
+            Zero-point in time for stellar rotation, default is zero
+
+        Returns
+        -------
+        time_series_spectrum : array
+            Flux as a function of time and wavelength. Flux units are
+            the same as the units for the input spectra.
+        """
+        # handle the out-of-transit spectroscopic rotational modulation:
+        (
+            spot_position_x, spot_position_y, spot_position_z,
+            major_axis, minor_axis, angle, rad, contrast
+        ) = self.spot_coords(t0_rot=t0_rot)
+
+        rsq = spot_position_x ** 2 + spot_position_y ** 2
+        mu = jnp.sqrt(1 - rsq)
+        f_S = rad ** 2 * mu * (spot_position_z < 0).astype(int)
+        photosphere = (1 - f_S[..., 0].sum(axis=1)) * self.phot[None, :]
+
+        spot_coverages, spot_spectra = jnp.broadcast_arrays(
+            f_S[..., 0], self.spectrum[None, ...]
+        )
+
+        time_series_spectrum = jnp.squeeze(
+            # photospheric component:
+            photosphere +
+
+            # sum of the active region components:
+            jnp.sum(spot_coverages * spot_spectra, axis=1)
+        )
+
+        return time_series_spectrum
 
 
 def bin_spectrum(spectrum, bins=None, log=True, min=None, max=None, **kwargs):
