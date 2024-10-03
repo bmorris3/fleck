@@ -646,7 +646,6 @@ class Star(object):
                     np.squeeze(spot_radii[i, 0])
                 ])
 
-                print('args', ellipse_centroid, ellipse_axes, angle)
                 spot = ellipse(ellipse_centroid, ellipse_axes,
                                np.degrees(angle))
 
