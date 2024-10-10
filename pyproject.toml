@@ -9,7 +9,7 @@ authors = [
 ]
 dependencies = [
   "astropy",
-  "numpy",
+  "numpy<2",
   "scipy",
   "shapely",
   "matplotlib"
@@ -38,7 +38,6 @@ docs = [
     "emcee",
     "corner",
     "pybind11>=2.12",
-    "numpy<2.0"
 ]
 jax = [
     "jax[cpu]",
