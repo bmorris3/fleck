@@ -37,6 +37,7 @@ docs = [
     "healpy",
     "emcee",
     "corner",
+    "pybind11>=2.12",
 ]
 jax = [
     "jax[cpu]",
