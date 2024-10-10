@@ -7,9 +7,10 @@ license = { file = "LICENSE", content-type = "text/plain" }
 authors = [
   { name = "Brett Morris", email = "morrisbrettm@gmail.com" },
 ]
+# require numpy < 2 until batman supports 2.x+
 dependencies = [
   "astropy",
-  "numpy",
+  "numpy<2",
   "scipy",
   "shapely",
   "matplotlib"
