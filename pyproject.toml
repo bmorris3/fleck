@@ -38,6 +38,7 @@ docs = [
     "emcee",
     "corner",
     "pybind11>=2.12",
+    "numpy<2.0"
 ]
 jax = [
     "jax[cpu]",
