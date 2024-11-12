@@ -370,6 +370,7 @@ class ActiveStar:
         u1 = jnp.atleast_1d(u1)
         u2 = jnp.atleast_1d(u2)
         u_ld = jnp.column_stack([u1, u2])
+
         # handle the out-of-transit spectroscopic rotational modulation:
         (
             spot_position_x, spot_position_y, spot_position_z,
@@ -439,11 +440,13 @@ class ActiveStar:
             jnp.sum(spot_coverages * spot_spectra, axis=1)
         )
 
+        rp = jnp.broadcast_to(rp, self.wavelength.shape)
+
         transit = vmap(
-            lambda u_ld: jaxoplanet.core.light_curve(
-                u1=u_ld[0], u2=u_ld[1], b=jnp.hypot(X, Y), r=rp
+            lambda rp: jaxoplanet.core.light_curve(
+                u=jnp.concatenate([u1, u2]).squeeze(), b=jnp.hypot(X, Y), r=rp
             ), in_axes=0, out_axes=1
-        )(u_ld)
+        )(rp)
 
         contaminated_transit = (
             time_series_spectrum - jnp.abs(transit) * self.phot[None, :]
@@ -463,7 +466,7 @@ class ActiveStar:
             spot_position_x - Y[:, None, None, None]
         )
         occultation_possible = jnp.squeeze(
-            (planet_spot_distance < (major_axis + rp)) &
+            (planet_spot_distance < (major_axis + rp.mean())) &
             (spot_position_z < 0)
         )
 
@@ -471,12 +474,12 @@ class ActiveStar:
         def time_step(
             carry, j, X=X, Y=Y, spot_position_y=spot_position_y,
             spot_position_x=spot_position_x, major_axis=major_axis,
-            minor_axis=minor_axis, rp=rp, angle=angle,
+            minor_axis=minor_axis, rp=rp.mean(), angle=angle,
             occultation_possible=occultation_possible
         ):
             return carry, lax.cond(
                 jnp.any(occultation_possible[j]),
-                lambda x: self._area_union_per_time(
+                lambda *args: self._area_union_per_time(
                     x0_ellipse=spot_position_y[j],
                     y0_ellipse=spot_position_x[j],
                     x0_circle=X[j],
@@ -487,8 +490,7 @@ class ActiveStar:
                     radius=rp,
                     occultation_possible=occultation_possible[j],
                 ),
-                lambda x: jnp.zeros((spot_position_x.shape[1], self.n_mc), dtype=bool),
-                False
+                lambda *args: jnp.zeros((spot_position_x.shape[1], self.n_mc), dtype=bool),
             )
 
         occultation_per_time_per_spot_per_mc_sample = lax.scan(
@@ -555,9 +557,8 @@ class ActiveStar:
 
             return carry, lax.cond(
                 occultation_possible[k],
-                lambda x: jnp.squeeze(find_overlap(k)),
-                lambda x: jnp.zeros(self.n_mc, dtype=bool),
-                False
+                lambda *args: jnp.squeeze(find_overlap(k)),
+                lambda *args: jnp.zeros(self.n_mc, dtype=bool)
             )
 
         monte_carlo_occulted_area = lax.scan(spot_step, 0, jnp.arange(x0_ellipse.shape[0]))[1]
@@ -637,6 +638,9 @@ class ActiveStar:
 
         b = (a * np.cos(inclination) * (1 - ecc ** 2) /
              (1 + ecc * np.sin(np.pi / 2)))
+
+        if hasattr(rp, '__len__'):
+            rp = rp.mean()
 
         planet_lower_extent = -b - rp
         planet_upper_extent = -b + rp

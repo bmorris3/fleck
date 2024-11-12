@@ -41,8 +41,8 @@ docs = [
 ]
 jax = [
     "jax[cpu]",
-    "jaxoplanet == 0.0.1",
-    "specutils"
+    "jaxoplanet == 0.0.2",
+    "specutils",
 ]
 
 [project.urls]
