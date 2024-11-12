@@ -190,7 +190,7 @@ that we will observe, the stellar inclination, and spectrum of the stellar photo
 .. code-block:: python
 
     # stellar parameters:
-    r = ActiveStar(
+    active_star = ActiveStar(
         times=times,
         inclination=np.pi/2,  # stellar inc [rad]
         T_eff=phot.meta['PHXTEFF'],
