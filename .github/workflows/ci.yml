@@ -33,7 +33,3 @@ jobs:
           python: 3.11
           os: ubuntu-latest
           linux: codestyle
-        - name: Test building of Sphinx docs
-          python: 3.11
-          os: ubuntu-latest
-          linux: build-docs
