@@ -443,10 +443,10 @@ class ActiveStar:
         rp = jnp.broadcast_to(rp, self.wavelength.shape)
 
         transit = vmap(
-            lambda rp: jaxoplanet.core.light_curve(
-                u=jnp.concatenate([u1, u2]).squeeze(), b=jnp.hypot(X, Y), r=rp
+            lambda rp, u: jaxoplanet.core.light_curve(
+                u=u, b=jnp.hypot(X, Y), r=rp
             ), in_axes=0, out_axes=1
-        )(rp)
+        )(rp, u_ld.squeeze())
 
         contaminated_transit = (
             time_series_spectrum - jnp.abs(transit) * self.phot[None, :]
