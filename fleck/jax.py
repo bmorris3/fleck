@@ -442,11 +442,14 @@ class ActiveStar:
 
         rp = jnp.broadcast_to(rp, self.wavelength.shape)
 
+        # if one pair of limb-darkening coefficients are given,
+        # broadcast up to the shape of `rp`
+        u_ld = u_ld * jnp.ones((rp.shape[0], 1))
         transit = vmap(
             lambda rp, u: jaxoplanet.core.light_curve(
                 u=u, b=jnp.hypot(X, Y), r=rp
             ), in_axes=0, out_axes=1
-        )(rp, u_ld.squeeze())
+        )(rp, u_ld)
 
         contaminated_transit = (
             time_series_spectrum - jnp.abs(transit) * self.phot[None, :]
