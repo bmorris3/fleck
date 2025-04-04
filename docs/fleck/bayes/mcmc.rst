@@ -36,12 +36,12 @@ Next we resolve the target coordinates using astropy, and download its light
 curve using ``lightkurve``'s handy method::
 
     coord = SkyCoord.from_name('V1298 Tau')
-    slcf = search_lightcurve(coord, mission='K2')
-
-    lc = slcf.download_all()
-    pdcsap = lc.PDCSAP_FLUX.stitch()
-
-    time = pdcsap.time
+    slcf = search_lightcurve(coord, author='K2')
+    
+    lc = slcf.download_all(flux_column='pdcsap_flux')
+    pdcsap = lc.stitch()
+    
+    time = pdcsap.time.value
     flux = pdcsap.flux
 
     notnanflux = ~np.isnan(flux)
