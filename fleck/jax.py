@@ -30,7 +30,7 @@ class ActiveStar:
     optional planetary transit models and spot occultations.
     """
 
-    n_mc = 1_000  # Number of Monte Carlo samples to use when computing planet+spot overlap
+    n_mc = 10_000  # Number of Monte Carlo samples to use when computing planet+spot overlap
     key = random.PRNGKey(0)  # random key seed
 
     def __init__(
@@ -527,7 +527,7 @@ class ActiveStar:
         key, subkey = random.split(self.key)
         theta_p = random.uniform(key, minval=0, maxval=2 * np.pi, shape=(self.n_mc,))
         key, subkey = random.split(key)
-        rad_p = random.uniform(subkey, minval=0, maxval=radius, shape=(self.n_mc,))
+        rad_p = radius * random.uniform(subkey, minval=0, maxval=1, shape=(self.n_mc,)) ** 0.5
         xp = rad_p * jnp.cos(theta_p) + x0_circle
         yp = rad_p * jnp.sin(theta_p) + y0_circle
 
