@@ -603,8 +603,29 @@ class ActiveStar:
 
         f_S = rad ** 2 * mu * (spot_position_z < 0.).astype(int)
 
-        # compute the transit model
-        mean_anomaly = 2 * np.pi * (self.times - t0) / period
+        # ------------------------------------------------------------------
+        # Orbital geometry (independent of spots)
+        # ------------------------------------------------------------------
+        ecc = jnp.asarray(ecc)
+        omega = jnp.asarray(omega)
+
+        # Index of time sample closest to mid-transit
+        t_ind = jnp.argmin(jnp.abs(self.times - t0))
+
+        # True anomaly at (inferior) conjunction in this geometry
+        f_tr = 0.5 * jnp.pi - omega
+
+        # Convert f_tr -> E_tr -> M_tr:
+        #   tan(f/2) = sqrt((1+e)/(1-e)) * tan(E/2)
+        #   M = E - e sin(E)
+        sqrt_factor = jnp.sqrt((1.0 - ecc) / (1.0 + ecc + 1e-15))
+        E_tr = 2.0 * jnp.arctan(jnp.tan(0.5 * f_tr) * sqrt_factor)
+        M_tr = E_tr - ecc * jnp.sin(E_tr)
+
+        # Mean anomaly as a function of time with t0 at mid-transit
+        mean_anomaly = (
+            2.0 * jnp.pi * (self.times - t0) / period + M_tr
+        )
         true_anomaly = jnp.arctan2(
             *jaxoplanet.core.kepler(M=mean_anomaly, ecc=ecc)
         )
@@ -615,6 +636,18 @@ class ActiveStar:
         # Winn 2011 Eqn 3-4: sky-projected coordinates
         X = -r * jnp.cos(omega + true_anomaly)
         Y = -r * jnp.sin(omega + true_anomaly) * jnp.cos(inclination)
+
+        # --------------------------------------------------------------
+        # Enforce that the transit chord lies below the stellar equator
+        # in the (X, Y) plane used for spot occultations:
+        #
+        # Choose the branch with Y(t0) <= 0 by reflecting across the
+        # equator if necessary. This does NOT change b(t) or the
+        # light curve because b = hypot(X, Y) is sign-invariant.
+        # --------------------------------------------------------------
+        Y_mid = Y[t_ind]
+        sign_Y = jnp.where(Y_mid > 0., -1., 1.)
+        Y = sign_Y * Y
 
         # Total fractional coverage by *any* spot
         coverage_sum = f_S[..., 0].sum(axis=1)
@@ -648,7 +681,6 @@ class ActiveStar:
             time_series_spectrum - jnp.abs(transit) * phot[None, :]
         ) / time_series_spectrum
 
-        t_ind = jnp.argmin(jnp.abs(self.times - t0))
         uncontaminated_max_depth = - transit[t_ind]
         contaminated_max_depth = (
             contaminated_transit.max(0) - contaminated_transit[t_ind]
