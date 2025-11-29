@@ -30,7 +30,8 @@ class ActiveStar:
     optional planetary transit models and spot occultations.
     """
 
-    n_mc = 10_000  # Number of Monte Carlo samples to use when computing planet+spot overlap
+    # Number of Monte Carlo samples to use when computing planet+spot overlap
+    n_mc = 10_000
     key = random.PRNGKey(0)  # random key seed
 
     def __init__(
@@ -137,7 +138,7 @@ class ActiveStar:
         radial_coord = 1 - jnp.geomspace(1e-5, 1, 100)[::-1]
         unspotted_total_flux = trapezoid(
             y=(
-                2 * np.pi * radial_coord *
+                2 * jnp.pi * radial_coord *
                 self.limb_darkening(radial_coord, u1, u2)
             ),
             x=radial_coord
@@ -145,7 +146,7 @@ class ActiveStar:
 
         # Morris 2020 Eqn 6-7
         spot_model = f0 - jnp.sum(
-            np.pi * rad ** 2 *
+            jnp.pi * rad ** 2 *
             (1 - contrast) *
             self.limb_darkening(mu, u1, u2) *
             mask_behind_star,
@@ -171,19 +172,23 @@ class ActiveStar:
         Returns
         -------
         spot_position_x : array
-            x-position of the active region in the observer oriented coordinate system [1]_.
+            x-position of the active region in the observer oriented
+            coordinate system [1]_.
         spot_position_y : array
-            y-position of the active region in the observer oriented coordinate system [1]_.
+            y-position of the active region in the observer oriented
+            coordinate system [1]_.
         spot_position_z : array
-            y-position of the active region in the observer oriented coordinate system [1]_.
+            y-position of the active region in the observer oriented
+            coordinate system [1]_.
         major_axis : array
-            Apparent semimajor axis of the circular active region, which is elliptical when
-            projected active onto the sky plane (in general)
+            Apparent semimajor axis of the circular active region, which is
+            elliptical when projected active onto the sky plane (in general)
         minor_axis : array
-            Apparent semiminor axis of the circular active region, which is elliptical when
-            projected active onto the sky plane (in general)
+            Apparent semiminor axis of the circular active region, which is
+            elliptical when projected active onto the sky plane (in general)
         angle : array
-            Angle between the +x-axis and the projected active region's semimajor axis
+            Angle between the +x-axis and the projected active region's
+            semimajor axis
         rad : array
             Active region radius [stellar radii]
         contrast: array
@@ -216,14 +221,15 @@ class ActiveStar:
         3. inclination
         """
 
-        phase = jnp.expand_dims(2 * np.pi * (times - t0_rot) / self.P_rot, [1, 2, 3])
+        phase = jnp.expand_dims(2 * jnp.pi * (times - t0_rot) / self.P_rot,
+                                [1, 2, 3])
         lon = jnp.expand_dims(self.lon, [0, 2, 3])
         lat = jnp.expand_dims(self.lat, [0, 2, 3])
         rad = jnp.expand_dims(self.rad, [0, 2, 3])
         inclination = jnp.expand_dims(jnp.asarray(self.inclination), [0, 1, 2])
 
-        comp_inclination = np.pi / 2 - inclination
-        phi = np.pi / 2 - phase - lon
+        comp_inclination = jnp.pi / 2 - inclination
+        phi = jnp.pi / 2 - phase - lon
 
         sin_lat = jnp.sin(lat)
         cos_lat = jnp.cos(lat)
@@ -231,10 +237,10 @@ class ActiveStar:
         cos_c_inc = jnp.cos(comp_inclination)
 
         spot_position_x = (
-            jnp.cos(phi - np.pi / 2) * sin_c_inc * cos_lat +
+            jnp.cos(phi - jnp.pi / 2) * sin_c_inc * cos_lat +
             cos_c_inc * sin_lat
         )
-        spot_position_y = -jnp.sin(phi - np.pi / 2) * cos_lat
+        spot_position_y = -jnp.sin(phi - jnp.pi / 2) * cos_lat
         spot_position_z = (
             sin_lat * sin_c_inc -
             jnp.sin(phi) * cos_c_inc * cos_lat
@@ -251,7 +257,8 @@ class ActiveStar:
             major_axis, minor_axis, angle, rad, contrast
         )
 
-    def add_spot(self, lon, lat, rad, contrast=None, temperature=None, spectrum=None):
+    def add_spot(self, lon, lat, rad, contrast=None, temperature=None,
+                 spectrum=None):
         """
         Add an active region to the stellar model.
 
@@ -263,12 +270,16 @@ class ActiveStar:
             Active region latitudes in radians on (-pi/2, pi/2)
         rad : float
             Active region radii in units of stellar radii
-        contrast : float
+        contrast : float or array
             Ratio of the active region's flux to the photospheric
-            flux at each ``ActiveStar.wavelength``
-        spectrum : float
+            flux at each ``ActiveStar.wavelength``.
+        temperature : float
+            Effective temperature of the active region. If provided
+            (and neither ``contrast`` nor ``spectrum`` are given),
+            a blackbody spectrum will be computed.
+        spectrum : float or array
             The spectrum of the active region on the same wavelength
-            grid is ``ActiveStar.phot``
+            grid as ``ActiveStar.phot``.
         """
         if contrast is None and spectrum is None and temperature is not None:
             self.phot = self._blackbody(self.wavelength, self.T_eff)
@@ -310,15 +321,15 @@ class ActiveStar:
         Compute quadratic limb darkening as a function of :math:`\\mu`.
         """
         return (
-            1 / np.pi *
+            1 / jnp.pi *
             (1 - u1 * (1 - mu) - u2 * (1 - mu) ** 2) /
             (1 - u1 / 3 - u2 / 6)
         )
 
     @jit
     def transit_model(self, t0, period, rp, a, inclination,
-                      omega=np.pi / 2, ecc=0, f0=1, t0_rot=0,
-                      u1=0, u2=0):
+                      omega=jnp.pi/2, ecc=0., f0=1., t0_rot=0.,
+                      u1=0., u2=0.):
         """
         Compute spectrophotometry with rotation and a planetary transit.
 
@@ -331,8 +342,8 @@ class ActiveStar:
             Mid-transit time
         period : float
             Orbital period of the transiting planet
-        rp : float
-            Exoplanet radius in units of stellar radii
+        rp : float or array
+            Exoplanet radius in units of stellar radii for each wavelength
         a : float
             Planetary semi-major axis in units of stellar radii
         inclination : float
@@ -345,10 +356,10 @@ class ActiveStar:
             Out-of-transit flux for an unspotted star, default is one.
         t0_rot : float
             Zero-point in time for stellar rotation, default is zero
-        u1 : float
-            Limb-darkening parameter :math:`u_1`
-        u2 : float
-            Limb-darkening parameter :math:`u_2`
+        u1 : float or array
+            Limb-darkening parameter :math:`u_1` for each wavelength
+        u2 : float or array
+            Limb-darkening parameter :math:`u_2` for each wavelength
 
         Returns
         -------
@@ -358,9 +369,11 @@ class ActiveStar:
             The apparent squared ratio of planet-to-star radius with stellar
             spectral contamination by active regions
          X : array
-            x-position of the planet in the observer oriented coordinate system [1]_.
+            x-position of the planet in the observer oriented coordinate
+            system [1]_.
          Y : array
-            y-position of the planet in the observer oriented coordinate system [1]_.
+            y-position of the planet in the observer oriented coordinate
+            system [1]_.
 
         References
         ----------
@@ -377,16 +390,16 @@ class ActiveStar:
         ) = self.spot_coords(t0_rot=t0_rot)
 
         rsq = spot_position_x ** 2 + spot_position_y ** 2
-        mu = jnp.sqrt(1 - rsq)
+        mu = jnp.sqrt(1. - rsq)
         mask_behind_star = jnp.where(
-            spot_position_z < 0, mu, 0
+            spot_position_z < 0., mu, 0.
         )
 
-        radial_coord = 1 - jnp.geomspace(1e-5, 1, 100)[::-1]
+        radial_coord = 1. - jnp.geomspace(1e-5, 1., 100)[::-1]
 
         unspotted_total_flux = trapezoid(
             y=(
-                2 * np.pi * radial_coord[:, None] *
+                2. * jnp.pi * radial_coord[:, None] *
                 self.limb_darkening(
                     radial_coord[:, None], *u_ld.T
                 )
@@ -402,15 +415,15 @@ class ActiveStar:
 
         # Morris 2020 Eqn 6-7
         out_of_transit = f0 - jnp.sum(
-            np.pi * rad ** 2 *
-            (1 - contrast) *
+            jnp.pi * rad ** 2 *
+            (1. - contrast) *
             limb_dark *
             mask_behind_star /
             unspotted_total_flux[None, None, :, None],
             axis=1
         )
 
-        f_S = rad ** 2 * mu * (spot_position_z < 0).astype(int)
+        f_S = rad ** 2 * mu * (spot_position_z < 0.).astype(int)
 
         # compute the transit model
         mean_anomaly = 2 * np.pi * (self.times - t0) / period
@@ -418,10 +431,10 @@ class ActiveStar:
             *jaxoplanet.core.kepler(M=mean_anomaly, ecc=ecc)
         )
 
-        # Winn 2011 Eqn 1
-        r = a * (1 - ecc ** 2) / (1 + ecc * jnp.cos(true_anomaly))
+        # Winn 2011 Eqn 1: sky-projected star-planet distance
+        r = a * (1. - ecc ** 2) / (1. + ecc * jnp.cos(true_anomaly))
 
-        # Winn 2011 Eqn 3-4
+        # Winn 2011 Eqn 3-4: sky-projected coordinates
         X = -r * jnp.cos(omega + true_anomaly)
         Y = -r * jnp.sin(omega + true_anomaly) * jnp.cos(inclination)
 
@@ -463,13 +476,14 @@ class ActiveStar:
         depth_ratio = contaminated_max_depth / uncontaminated_max_depth
         apparent_rprs2 = rp ** 2 * depth_ratio
 
+        # Planet–spot distance in the (X, Y) plane
         planet_spot_distance = jnp.hypot(
             spot_position_y - X[:, None, None, None],
-            spot_position_x - Y[:, None, None, None]
+            spot_position_x - Y[:, None, None, None],
         )
         occultation_possible = jnp.squeeze(
             (planet_spot_distance < (major_axis + rp.mean())) &
-            (spot_position_z < 0)
+            (spot_position_z < 0.)
         )
 
         @jit
@@ -492,27 +506,30 @@ class ActiveStar:
                     radius=rp,
                     occultation_possible=occultation_possible[j],
                 ),
-                lambda *args: jnp.zeros((spot_position_x.shape[1], self.n_mc), dtype=bool),
+                lambda *args: jnp.zeros((spot_position_x.shape[1], self.n_mc),
+                                        dtype=bool),
             )
 
         occultation_per_time_per_spot_per_mc_sample = lax.scan(
             time_step, 0.0, jnp.arange(self.times.shape[0])
-        )[1]  # shape: (n_times, n_spots, n_mc_samples)
+        )[1]
+        # (n_times, n_spots, n_mc_samples)
 
         frac_occulted_per_time_per_spot = jnp.count_nonzero(
             occultation_per_time_per_spot_per_mc_sample, axis=2
         ) / self.n_mc
 
         occultation = (
-            (1 - contrast) *
+            (1. - contrast) *
             jnp.expand_dims(frac_occulted_per_time_per_spot, axis=(2, 3))
         )
-        scaled_occultation = (1 - contaminated_transit) * jnp.sum(occultation, axis=1)[..., 0]
+        scaled_occultation = ((1. - contaminated_transit)
+                              * jnp.sum(occultation, axis=1)[..., 0])
 
         spectrum_at_transit = time_series_spectrum[t_ind]
 
         return (
-            out_of_transit[..., 0] * (contaminated_transit + scaled_occultation),
+            out_of_transit[..., 0]*(contaminated_transit+scaled_occultation),
             apparent_rprs2, X, Y,
             spectrum_at_transit
         )
@@ -524,9 +541,11 @@ class ActiveStar:
     ):
         # Monte Carlo sampling for points inside the planet's disk:
         key, subkey = random.split(self.key)
-        theta_p = random.uniform(key, minval=0, maxval=2 * np.pi, shape=(self.n_mc,))
+        theta_p = random.uniform(key, minval=0, maxval=2 * jnp.pi,
+                                 shape=(self.n_mc,))
         key, subkey = random.split(key)
-        rad_p = radius * random.uniform(subkey, minval=0, maxval=1, shape=(self.n_mc,)) ** 0.5
+        rad_p = radius * random.uniform(subkey, minval=0, maxval=1,
+                                        shape=(self.n_mc,)) ** 0.5
         xp = rad_p * jnp.cos(theta_p) + x0_circle
         yp = rad_p * jnp.sin(theta_p) + y0_circle
 
@@ -542,12 +561,15 @@ class ActiveStar:
 
         @jit
         def find_overlap(k):
-            # find overlap between the planet and the elliptical region (projected circular spot)
+            # find overlap between the planet and the elliptical region
+            # (projected circular spot)
             in_ellipse = jnp.hypot(
                 ((xp - x0_ellipse[k]) * jnp.cos(jnp.radians(angle[k])) +
-                 (yp - y0_ellipse[k]) * jnp.sin(jnp.radians(angle[k]))) / alpha[k],
+                 (yp - y0_ellipse[k]) * jnp.sin(jnp.radians(angle[k]))
+                 ) / alpha[k],
                 ((xp - x0_ellipse[k]) * jnp.sin(jnp.radians(angle[k])) -
-                 (yp - y0_ellipse[k]) * jnp.cos(jnp.radians(angle[k]))) / beta[k]
+                 (yp - y0_ellipse[k]) * jnp.cos(jnp.radians(angle[k]))
+                 ) / beta[k]
             ) < 1
 
             return in_ellipse & on_star
@@ -563,7 +585,8 @@ class ActiveStar:
                 lambda *args: jnp.zeros(self.n_mc, dtype=bool)
             )
 
-        monte_carlo_occulted_area = lax.scan(spot_step, 0, jnp.arange(x0_ellipse.shape[0]))[1]
+        monte_carlo_occulted_area = lax.scan(
+            spot_step, 0, jnp.arange(x0_ellipse.shape[0]))[1]
 
         return monte_carlo_occulted_area
 
@@ -588,8 +611,8 @@ class ActiveStar:
         t0_rot : float
             Zero-point in time for stellar rotation, default is zero
         multiply_radii : float
-            Visually represent scaled-up active regions where the radii are increased
-            by factor ``multiply_radii``, default is one.
+            Visually represent scaled-up active regions where the radii are
+            increased by factor ``multiply_radii``, default is one.
         ax : matplotlib.axes.Axes
             Add the visualization to this matplotlib axis
         annotate : bool
@@ -701,20 +724,27 @@ def bin_spectrum(spectrum, bins=None, log=True, min=None, max=None, **kwargs):
     Parameters
     ----------
     spectrum : `specutils.Spectrum1D`
+        Spectrum to be binned
+    bins : int or ~numpy.ndarray
+        Number of bins, or the bin edges
     log : bool
         If true, compute bin edges based on the log base 10 of
         the frequency.
-    bins : int or ~numpy.ndarray
-        Number of bins, or the bin edges
+    min : ~astropy.units.Quantity
+        Minimum wavelength to include in the binned spectrum.
+    max : ~astropy.units.Quantity
+        Maximum wavelength to include in the binned spectrum.
+    **kwargs : dict
+        Additional keyword arguments passed to `scipy.stats.binned_statistic`
 
     Returns
     -------
-    new_spectrum :
+    new_spectrum : `specutils.Spectrum1D`
+        Binned spectrum
     """
-    nirspec_wl_range = (spectrum.wavelength > min) & (spectrum.wavelength < max)
-
-    wavelength = spectrum.wavelength[nirspec_wl_range]
-    flux = spectrum.flux[nirspec_wl_range]
+    in_range = (spectrum.wavelength > min) & (spectrum.wavelength < max)
+    wavelength = spectrum.wavelength[in_range]
+    flux = spectrum.flux[in_range]
 
     if log:
         wl_axis = np.log10(wavelength.to(u.um).value)
@@ -740,20 +770,33 @@ def bin_spectrum(spectrum, bins=None, log=True, min=None, max=None, **kwargs):
     nans = np.isnan(bs.statistic)
     interp_fluxes = bs.statistic.copy()
     if np.any(nans) and all(
-        map(lambda x: len(x) > 0, [wl_bins[nans], wl_bins[~nans], bs.statistic[~nans]])
+        map(lambda x: len(x) > 0, [wl_bins[nans], wl_bins[~nans],
+                                   bs.statistic[~nans]])
     ):
-        interp_fluxes[nans] = np.interp(wl_bins[nans], wl_bins[~nans], bs.statistic[~nans])
+        interp_fluxes[nans] = np.interp(wl_bins[nans], wl_bins[~nans],
+                                        bs.statistic[~nans])
     return Spectrum1D(
-        flux=interp_fluxes * flux.unit, spectral_axis=wl_bins, meta=spectrum.meta
+        flux=interp_fluxes * flux.unit, spectral_axis=wl_bins,
+        meta=spectrum.meta
     )
 
 
 def spectral_binning(y, all_x, all_y):
     """
     Spectral binning via trapezoidal approximation.
+
+    Parameters
+    ----------
+    y : array
+        Values to be binned
+    all_x : array
+        Full x-axis of the spectrum
+    all_y : array
+        Full y-axis of the spectrum
     """
     min_ind = np.argwhere(all_y == y[0])[0, 0]
     max_ind = np.argwhere(all_y == y[-1])[0, 0]
     if max_ind > min_ind and y.shape == all_x[min_ind:max_ind + 1].shape:
-        return np.trapz(y, all_x[min_ind:max_ind + 1]) / (all_x[max_ind] - all_x[min_ind])
+        return (np.trapz(y, all_x[min_ind:max_ind + 1])
+                / (all_x[max_ind] - all_x[min_ind]))
     return np.nan
