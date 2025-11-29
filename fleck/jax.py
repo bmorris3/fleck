@@ -854,7 +854,7 @@ class ActiveStar:
             return to_hex(
                 plt.cm.YlOrRd_r(
                     (np.log10(x) - min(log_temps)) /
-                    (max(log_temps) - min(log_temps)) * 0.6 + 0.4
+                    (self.T_eff - min(log_temps)) * 0.6 + 0.4
                 )
             )
 
