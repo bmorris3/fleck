@@ -46,7 +46,8 @@ class ActiveStar:
         inclination=empty,
         wavelength=None,
         phot=None,
-        P_rot=3.3
+        P_rot=3.3,
+        contrast=empty,
     ):
         """
         Parameters
@@ -73,6 +74,11 @@ class ActiveStar:
             Photospheric flux at each ``wavelength``.
         P_rot : float
             Stellar rotation period
+        contrast : float or array
+            Ratio of the active region flux to the photospheric
+            flux at each ``wavelength``. If provided, this will be
+            used directly; otherwise it is computed from ``spectrum``
+            and ``phot`` when possible.
         """
         self.times = jnp.array(times)
         self.lon = jnp.array(lon)
@@ -82,9 +88,103 @@ class ActiveStar:
         self.T_eff = T_eff
         self.temperature = jnp.array(temperature)
         self.inclination = inclination
-        self.wavelength = wavelength
-        self.phot = phot
+        # Allow wavelength/phot to remain optional, but store them as
+        # JAX arrays when provided.
+        self.wavelength = None if wavelength is None else jnp.array(wavelength)
+        self.phot = None if phot is None else jnp.array(phot)
         self.P_rot = P_rot
+
+        # Raw contrast as passed by the user (may be scalar, 1D, 2D, or
+        # empty). We normalise shapes after dimension inference.
+        if contrast is None or getattr(contrast, "size", 0) == 0:
+            self.contrast = jnp.array([])
+        else:
+            self.contrast = jnp.array(contrast)
+
+        # ------------------------------------------------------------------
+        # Dimension bookkeeping: infer n_times, n_spots, n_lambda
+        # ------------------------------------------------------------------
+        self.n_times = int(self.times.size)
+        self.n_spots = int(self.rad.size)
+        self.n_lambda = None
+
+        if (
+            self.wavelength is not None and
+            getattr(self.wavelength, "size", 0) != 0
+        ):
+            # 1) Prefer the explicit wavelength grid, if provided
+            self.n_lambda = int(self.wavelength.size)
+
+        elif getattr(self.spectrum, "size", 0) != 0:
+            # 2) Otherwise, use the spectrum shape
+
+            if self.spectrum.ndim == 1:
+                # Treat a 1D spectrum as (n_lambda,)
+                self.n_lambda = int(self.spectrum.shape[0])
+            else:
+                # Assume the last axis is wavelength
+                self.n_lambda = int(self.spectrum.shape[-1])
+
+        elif getattr(self.phot, "size", 0) != 0:
+            # 3) Otherwise, use the photosphere
+
+            self.n_lambda = self.phot.size
+
+        elif getattr(self.contrast, "size", 0) != 0:
+            # 4) Finally, fall back to the contrast shape, using n_spots to
+            # break degeneracies between (n_spots,) and (n_lambda,)
+
+            c = self.contrast
+            if c.ndim == 0:
+                self.n_lambda = 1
+            elif c.ndim == 1:
+                if self.n_spots > 0 and c.shape[0] == self.n_spots:
+                    # One contrast per spot, same for all wavelengths
+                    self.n_lambda = 1
+                else:
+                    # One contrast per wavelength bin, same for all spots
+                    self.n_lambda = int(c.shape[0])
+            elif c.ndim == 2:
+                # Last axis is wavelength
+                self.n_lambda = int(c.shape[-1])
+
+        else:
+            # Absolute last resort: a single "white-light" wavelength bin
+            self.n_lambda = 1
+
+        # Normalise the supplied contrast argument into something at least
+        # 2D where possible.
+        if self.contrast.size != 0:
+            if self.contrast.ndim == 0:
+                # Single scalar contrast: broadcast to all spots in a single
+                # wavelength bin.
+                self.contrast = self.contrast * jnp.ones((self.n_spots, 1))
+            elif self.contrast.ndim == 1:
+                if self.n_spots > 0 and self.contrast.shape[0] == self.n_spots:
+                    # Per-spot contrast for a single wavelength bin.
+                    self.contrast = self.contrast[:, None]
+                else:
+                    # Per-wavelength contrast for a single spot.
+                    self.contrast = self.contrast[None, :]
+            # If contrast is already 2D+ we assume the user passed
+            # (n_spots, n_lambda) and leave it as-is.
+
+        # If we have no phot, set it to unity
+        self.phot = (jnp.asarray(self.phot) if self.phot is not None
+                     else jnp.ones((self.n_lambda,)))
+
+        # If an explicit contrast was not provided but we do have a
+        # spectrum and photosphere, derive the contrast now.
+        if self.contrast.size == 0 and self.spectrum.size != 0:
+            derived_contrast = self.spectrum / self.phot[None, :]
+            if derived_contrast.ndim == 1:
+                derived_contrast = derived_contrast[None, :]
+            self.contrast = derived_contrast
+
+        # If we have a contrast and a photosphere but no spectrum,
+        # construct a spectrum that is consistent with both.
+        if self.spectrum.size == 0 and self.contrast.size != 0:
+            self.spectrum = self.contrast * self.phot[None, :]
 
     def tree_flatten(self):
         children = (
@@ -99,6 +199,7 @@ class ActiveStar:
             self.wavelength,
             self.phot,
             self.P_rot,
+            self.contrast,
         )
         aux_data = None
         return children, aux_data
@@ -198,13 +299,49 @@ class ActiveStar:
         ----------
         .. [1]  Fabrycky & Winn (2009) https://arxiv.org/abs/0902.0737
         """
-        contrast = self.spectrum / self.phot[None, :]
-
-        if contrast.ndim == 1:
-            contrast = contrast[None, :]
-
         if times is None:
             times = self.times
+
+        # Use the dimensions inferred in __init__
+        n_spots = int(self.n_spots)
+        n_lambda = int(self.n_lambda)
+
+        # ------------------------------------------------------------------
+        # Build a per-spot, per-wavelength contrast array of shape
+        # (n_spots, n_lambda), then broadcast to (1, n_spots, n_lambda, 1)
+        # for use with the f_S tensor in transit_model.
+        # ------------------------------------------------------------------
+        if self.contrast.size != 0:
+            base_contrast = jnp.asarray(self.contrast)
+        elif self.spectrum.size != 0:
+            base_contrast = jnp.asarray(self.spectrum) / self.phot[None, :]
+        else:
+            # No contrast information available.
+            # Default to maximum contrast: spot == 0
+            base_contrast = jnp.zeros((n_spots, n_lambda))
+
+        # Normalize to exactly (n_spots, n_lambda)
+        if n_spots == 0:
+            # No spots: keep a well-defined empty (0, n_lambda) array
+            # to avoid ambiguous reshapes.
+            base_contrast = jnp.zeros((0, n_lambda))
+        elif base_contrast.ndim == 0:
+            base_contrast = jnp.full((n_spots, n_lambda), base_contrast)
+        elif base_contrast.ndim == 1:
+            if base_contrast.shape[0] == n_spots:
+                # One contrast per spot, broadcast over wavelength.
+                base_contrast = base_contrast[:, None]*jnp.ones((1, n_lambda))
+            else:
+                # One contrast per wavelength, broadcast over spots.
+                base_contrast = base_contrast[None, :]*jnp.ones((n_spots, 1))
+        elif base_contrast.shape[0] == 1 and n_spots > 1:
+            # Single-spot input, broadcast along spot axis first.
+            base_contrast = jnp.broadcast_to(
+                base_contrast, (n_spots,)+base_contrast.shape[1:])
+
+        # Final contrast tensor used downstream:
+        # shape: (1, n_spots, n_lambda, 1)
+        contrast = base_contrast[None, :, :, None]
 
         """
         Limits:
@@ -281,25 +418,57 @@ class ActiveStar:
             The spectrum of the active region on the same wavelength
             grid as ``ActiveStar.phot``.
         """
-        if contrast is None and spectrum is None and temperature is not None:
-            self.phot = self._blackbody(self.wavelength, self.T_eff)
+        if contrast is not None:
+            # User-supplied contrast: convert to spectrum
+            contrast = jnp.array(contrast)
+            if contrast.ndim == 0:
+                # Scalar contrast: broadcast to all wavelengths
+                contrast = contrast[None] * jnp.ones(self.n_lambda)
+            elif contrast.ndim == 1:
+                # 1D contrast are defined on the wavelength grid
+                contrast = contrast[None, :]
+            # Derive the spectrum from the contrast
+            spectrum = contrast * self.phot[None, :]
+        elif spectrum is not None:
+            # User-supplied spectrum: ensure correct shape
+            spectrum = jnp.array(spectrum)
+            if spectrum.ndim == 0:
+                # Scalar spectrum: broadcast to all wavelengths
+                spectrum = spectrum[None] * jnp.ones(self.n_lambda)
+            elif spectrum.ndim == 1:
+                # 1D spectra are defined on the wavelength grid
+                spectrum = spectrum[None, :]
+            # Derive the contrast from the spectrum
+            contrast = spectrum / self.phot[None, :]
+        elif spectrum is None and temperature is not None:
+            # No contrast or spectrum, but a temperature: compute a blackbody
             spectrum = self._blackbody(self.wavelength, temperature)
+            contrast = spectrum / self.phot[None, :]
+            if contrast.ndim == 1:
+                contrast = contrast[None, :]
 
-        for attr, new_value in zip("lon, lat, rad, spectrum, temperature".split(', '),
-                                   [lon, lat, rad, spectrum, temperature]):
+        for attr, new_value in zip(
+            "lon, lat, rad, spectrum, temperature, contrast".split(', '),
+            [lon, lat, rad, spectrum, temperature, contrast],
+        ):
 
             prop = getattr(self, attr)
 
             if not hasattr(new_value, 'ndim'):
                 new_value = jnp.array([new_value])
 
-            if prop is not None:
-                if prop.ndim > 1 or (len(prop) > 1 and len(prop) == len(new_value)):
+            if prop is not None and getattr(prop, "size", 0) != 0:
+                if prop.ndim > 1 or (
+                    len(prop) > 1 and len(prop) == len(new_value)
+                ):
                     new_value = jnp.vstack([prop, new_value])
                 else:
                     new_value = jnp.concatenate([prop, new_value])
 
                 setattr(self, attr, new_value)
+
+        # Update n_spots
+        self.n_spots += 1
 
     @jit
     def _blackbody(self, wavelength_meters, temperature):
@@ -379,6 +548,15 @@ class ActiveStar:
         ----------
         .. [1] Fabrycky & Winn (2009) https://arxiv.org/abs/0902.0737
         """
+        # Photosphere: ensure a 1D array of length n_lambda
+        n_lambda = int(self.n_lambda)
+        phot = (
+            jnp.asarray(self.phot)
+            if self.phot is not None
+            else jnp.ones((n_lambda,))
+        )
+
+        # Limb-darkening coefficients
         u1 = jnp.atleast_1d(u1)
         u2 = jnp.atleast_1d(u2)
         u_ld = jnp.column_stack([u1, u2])
@@ -438,25 +616,28 @@ class ActiveStar:
         X = -r * jnp.cos(omega + true_anomaly)
         Y = -r * jnp.sin(omega + true_anomaly) * jnp.cos(inclination)
 
-        photosphere = (1 - f_S[..., 0].sum(axis=1)) * self.phot[None, :]
+        # Total fractional coverage by *any* spot
+        coverage_sum = f_S[..., 0].sum(axis=1)
+        # (n_times, 1)
 
-        spot_coverages, spot_spectra = jnp.broadcast_arrays(
-            f_S[..., 0], self.spectrum[None, ...]
-        )
+        # Spot-weighted contrast
+        spot_weighted_contrast = jnp.sum(
+            f_S * contrast, axis=1
+        )[..., 0]
+        # (n_times, n_lambda)
 
-        time_series_spectrum = jnp.squeeze(
-            # photospheric component:
-            photosphere +
+        flux_factor = (1.0 - coverage_sum) + spot_weighted_contrast
+        time_series_spectrum = phot[None, :] * flux_factor
+        # (n_times, n_lambda)
 
-            # sum of the active region components:
-            jnp.sum(spot_coverages * spot_spectra, axis=1)
-        )
+        rp = jnp.broadcast_to(rp, (n_lambda,))
+        # (n_lambda,)
 
-        rp = jnp.broadcast_to(rp, self.wavelength.shape)
-
-        # if one pair of limb-darkening coefficients are given,
-        # broadcast up to the shape of `rp`
+        # Broadcast limb-darkening if needed
         u_ld = u_ld * jnp.ones((rp.shape[0], 1))
+        # (n_lambda, 2)
+
+        # Uncontaminated transit model
         transit = vmap(
             lambda rp, u: jaxoplanet.core.light_curve(
                 u=u, b=jnp.hypot(X, Y), r=rp
@@ -464,7 +645,7 @@ class ActiveStar:
         )(rp, u_ld)
 
         contaminated_transit = (
-            time_series_spectrum - jnp.abs(transit) * self.phot[None, :]
+            time_series_spectrum - jnp.abs(transit) * phot[None, :]
         ) / time_series_spectrum
 
         t_ind = jnp.argmin(jnp.abs(self.times - t0))
@@ -559,6 +740,15 @@ class ActiveStar:
         beta = jnp.atleast_1d(beta)
         angle = jnp.atleast_1d(angle)
 
+        # If there are no active regions (no spots), return an empty
+        # (0, n_mc) array and skip the per-spot scan entirely. This
+        # prevents index errors when `occultation_possible` is empty.
+        if (
+            x0_ellipse.size == 0 or
+            getattr(occultation_possible, "size", 0) == 0
+        ):
+            return jnp.zeros((0, self.n_mc), dtype=bool)
+
         @jit
         def find_overlap(k):
             # find overlap between the planet and the elliptical region
@@ -623,7 +813,8 @@ class ActiveStar:
         if ax is None:
             ax = plt.gca()
 
-        log_temps = np.log10(self.temperature)
+        if self.temperature is not None:
+            log_temps = np.log10(self.temperature)
 
         def temp_cmap(x):
             return to_hex(
@@ -633,14 +824,54 @@ class ActiveStar:
                 )
             )
 
-        star = plt.Circle((0, 0), 1, color=to_hex(temp_cmap(self.T_eff)))
+        if self.T_eff is None:
+            color = 'white'
+        else:
+            color = to_hex(temp_cmap(self.T_eff))
+
+        star = plt.Circle((0, 0), 1, facecolor=color, edgecolor='k')
         ax.add_patch(star)
         ax.set(xlim=[-1.05, 1.05], ylim=[-1.05, 1.05])
 
-        squeezed_coords = list(map(
-            jnp.squeeze, self.spot_coords(times=jnp.array([t0]), t0_rot=t0_rot)
-        ))
-        for i, (x, y, z, _, _, _, _, angle) in enumerate(zip(*squeezed_coords)):
+        (
+            spot_position_x,
+            spot_position_y,
+            spot_position_z,
+            _,
+            _,
+            angle,
+            _,
+            contrast,
+        ) = self.spot_coords(times=jnp.array([t0, ]), t0_rot=t0_rot)
+
+        # Slice out that time and drop the singleton trailing dims.
+        # After this, each has shape (n_spots,).
+        spot_x = spot_position_x[0, :, 0, 0]
+        spot_y = spot_position_y[0, :, 0, 0]
+        spot_z = spot_position_z[0, :, 0, 0]
+        # contrast is usually (1, n_spots, n_lambda, 1)
+        # for plotting, pick λ = 0
+        contr = contrast[0, :, 0, 0]
+
+        # Convert to NumPy for plotting (avoids JAX tracing issues)
+        spot_x_np = np.asarray(spot_x)
+        spot_y_np = np.asarray(spot_y)
+        spot_z_np = np.asarray(spot_z)
+        contr_np = np.asarray(contr)
+
+        for i in range(self.n_spots):
+            x = spot_x_np[i]
+            y = spot_y_np[i]
+            z = spot_z_np[i]
+            c = contr_np[i]
+
+            if len(self.temperature) == 0:
+                color = 'k'
+                alpha = 1-c
+            else:
+                color = temp_cmap(self.temperature[i])
+                alpha = 1
+
             if z < 0:
                 rsq = x ** 2 + y ** 2
 
@@ -648,12 +879,17 @@ class ActiveStar:
                 angle = -np.degrees(np.arctan2(y, x))
                 ell = Ellipse(
                     (y, x), width=multiply_radii * 2 * self.rad[i],
-                    height=multiply_radii * 2 * self.rad[i] * short, angle=angle,
-                    facecolor=temp_cmap(self.temperature[i]), edgecolor='k'
+                    height=multiply_radii * 2 * self.rad[i] * short,
+                    angle=angle, facecolor=color, alpha=alpha, edgecolor='k'
                 )
                 ax.add_patch(ell)
 
-                if annotate:
+                if annotate and len(self.temperature) == 0:
+                    ax.annotate(
+                        f"{i+1}: {c:.2f}", (y, x),
+                        va='center', ha='center', fontsize=6
+                    )
+                elif annotate:
                     ax.annotate(
                         f"{i+1}: {int(self.temperature[i])} K", (y, x),
                         va='center', ha='center', fontsize=6
