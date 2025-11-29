@@ -813,7 +813,7 @@ class ActiveStar:
         return monte_carlo_occulted_area
 
     def plot_star(self, t0, rp, a, inclination,
-                  ecc=0, t0_rot=0, multiply_radii=1,
+                  ecc=0, omega=jnp.pi/2, t0_rot=0, multiply_radii=1,
                   ax=None, annotate=False):
         """
         Plot a 2D representation of the star and transit chord.
@@ -830,6 +830,8 @@ class ActiveStar:
             Planetary orbital inclination [radians]
         ecc : float
             Orbital eccentricity, default is zero.
+        omega : float
+            Argument of periapse [radians], default is :math:`\\pi/2`.
         t0_rot : float
             Zero-point in time for stellar rotation, default is zero
         multiply_radii : float
@@ -930,7 +932,7 @@ class ActiveStar:
         ax.set_aspect('equal')
 
         b = (a * np.cos(inclination) * (1 - ecc ** 2) /
-             (1 + ecc * np.sin(np.pi / 2)))
+             (1 + ecc * np.sin(omega)))
 
         if hasattr(rp, '__len__'):
             rp = rp.mean()
