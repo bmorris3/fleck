@@ -55,7 +55,7 @@ class ActiveStar:
         lon : array
             Active region longitudes in radians on (0, 2pi)
         lat : array
-            Active region latitudes in radians on (0, pi)
+            Active region latitudes in radians on (-pi/2, pi/2)
         rad : array
             Active region radii in units of stellar radii
         spectrum : array
@@ -203,7 +203,7 @@ class ActiveStar:
 
         """
         Limits:
-        lat: (0, pi)
+        lat: (-pi/2, pi/2)
         lon: (0, 2pi)
         rad: (0, None)
         contrast: (0, inf)
@@ -220,7 +220,6 @@ class ActiveStar:
         lon = jnp.expand_dims(self.lon, [0, 2, 3])
         lat = jnp.expand_dims(self.lat, [0, 2, 3])
         rad = jnp.expand_dims(self.rad, [0, 2, 3])
-        contrast = jnp.expand_dims(contrast, [0, 3])
         inclination = jnp.expand_dims(jnp.asarray(self.inclination), [0, 1, 2])
 
         comp_inclination = np.pi / 2 - inclination
@@ -232,13 +231,13 @@ class ActiveStar:
         cos_c_inc = jnp.cos(comp_inclination)
 
         spot_position_x = (
-            jnp.cos(phi - np.pi / 2) * sin_c_inc * sin_lat +
-            cos_c_inc * cos_lat
+            jnp.cos(phi - np.pi / 2) * sin_c_inc * cos_lat +
+            cos_c_inc * sin_lat
         )
-        spot_position_y = -jnp.sin(phi - np.pi / 2) * sin_lat
+        spot_position_y = -jnp.sin(phi - np.pi / 2) * cos_lat
         spot_position_z = (
-            cos_lat * sin_c_inc -
-            jnp.sin(phi) * cos_c_inc * sin_lat
+            sin_lat * sin_c_inc -
+            jnp.sin(phi) * cos_c_inc * cos_lat
         )
 
         rsq = spot_position_x ** 2 + spot_position_y ** 2
@@ -261,7 +260,7 @@ class ActiveStar:
         lon : float
             Active region longitudes in radians on (0, 2pi)
         lat : float
-            Active region latitudes in radians on (0, pi)
+            Active region latitudes in radians on (-pi/2, pi/2)
         rad : float
             Active region radii in units of stellar radii
         contrast : float
