@@ -91,6 +91,13 @@ def ellipse(center, lengths, angle=0):
     """
     ell = affinity.scale(Point(center).buffer(1),
                          xfact=lengths[0], yfact=lengths[1])
+
+    # deprecations in numpy v1.25 drop support for vector
+    # `angle` in this shapely call. extract the first
+    # value in `angle` if it has ndim > 0
+    if hasattr(angle, 'flat'):
+        angle = angle.flat[0]
+
     ell_rotated = affinity.rotate(ell, angle=angle)
     return ell_rotated
 
@@ -372,7 +379,7 @@ class Star(object):
 
         # Generate array of rotation matrices to rotate the spots so that the
         # planet's orbit normal is tilted with respect to stellar spin
-        tilt = rotation_matrix(-lam, axis='x')
+        tilt = rotation_matrix(lam, axis='x')
         tilted_spots = inclined_spots.transform(tilt)
 
         return tilted_spots
@@ -633,8 +640,9 @@ class Star(object):
                 spot_z = tilted_spots.z.value[0, i]
 
                 # Compute the spot position and ellipsoidal shape
-                r_spot = np.hypot(spot_z, spot_y)
-                angle = np.arctan2(spot_z, spot_y)
+                r_spot = np.hypot(spot_z, spot_y)[0]
+                angle = np.arctan2(spot_z, spot_y)[0]
+
                 ellipse_centroid = np.array([
                     np.squeeze(spot_y),
                     np.squeeze(spot_z)
@@ -704,15 +712,15 @@ class Star(object):
 
         # If pole is visible, mark it:
         if polar_spot.x > 0:
-            ax.scatter(-polar_spot.y, polar_spot.z, color='k', marker='x')
+            ax.scatter(polar_spot.y, polar_spot.z, color='k', marker='x')
 
         # Where equator is visible, mark it:
         equator_visible = equatorial_line.x > 0
-        equator_xy = np.vstack([-equatorial_line.y[equator_visible],
+        equator_xy = np.vstack([equatorial_line.y[equator_visible],
                                 equatorial_line.z[equator_visible]]).T
         sort_equator = sort_plot_points(equator_xy,
                                         k0=np.argmax(equator_xy[:, 1]))
-        ax.plot(-equatorial_line.y[equator_visible][sort_equator],
+        ax.plot(equatorial_line.y[equator_visible][sort_equator],
                 equatorial_line.z[equator_visible][sort_equator],
                 ls=':', color='gray')
 
