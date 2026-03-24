@@ -232,6 +232,12 @@ class Star(object):
             Stellar light curves of shape ``(n_phases, len(inc_stellar))`` or
             ``(len(times), len(inc_stellar))``
         """
+        # in case these inputs are not 2D, make them so:
+        spot_lons, spot_lats, spot_radii = [
+            np.atleast_2d(arr)
+            for arr in [spot_lons, spot_lats, spot_radii]
+        ]
+
         if time_ref is None:
             if times is not None:
                 time_ref = 0
@@ -266,7 +272,7 @@ class Star(object):
             # Compute a transit model
             from batman import TransitModel
 
-            n_spots = len(spot_lons)
+            n_spots = spot_lons.shape[1]
             m = TransitModel(planet, times, **transit_model_kwargs)
             lambda_e = 1 - m.light_curve(planet)[:, np.newaxis]
             # Compute the true anomaly of the planet at each time, f:
@@ -310,11 +316,11 @@ class Star(object):
         # Return the flux missing from the star at each time due to spots
         # (f_spots/self.f0) and due to the transit (lambda_e):
         if return_spots_occulted:
-            return (1 - np.sum(f_spots.filled(0)/self.f0, axis=1) - lambda_e,
+            return (1 - np.sum(f_spots.filled(0)/self.f0, axis=2) - lambda_e,
                     spots_occulted)
 
         else:
-            return 1 - np.sum(f_spots.filled(0)/self.f0, axis=1) - lambda_e
+            return 1 - np.sum(f_spots.filled(0)/self.f0, axis=2) - lambda_e
 
     def spherical_to_cartesian(self, spot_lons, spot_lats, inc_stellar,
                                times=None, planet=None, time_ref=None):
@@ -360,7 +366,7 @@ class Star(object):
         else:
             if time_ref is None:
                 time_ref = 0
-            rotational_phase = 2 * np.pi * ((times - time_ref) /
+            rotational_phase = 2 * np.pi * ((time_ref - times) /
                                             self.rotation_period) * u.rad
             rotate = rotation_matrix(rotational_phase[:, np.newaxis, np.newaxis],
                                      axis='z')
@@ -539,9 +545,9 @@ class Star(object):
 
                 for i in range(n_spots):
                     # If the spot is visible (x > 0):
-                    if tilted_spots.x.value[k, i] > 0:
-                        spot_y = tilted_spots.y.value[k, i]
-                        spot_z = tilted_spots.z.value[k, i]
+                    if tilted_spots.x.value[k, 0, i] > 0:
+                        spot_y = tilted_spots.y.value[k, 0, i]
+                        spot_z = tilted_spots.z.value[k, 0, i]
 
                         # Compute the spot position and ellipsoidal shape
                         r_spot = np.hypot(spot_z, spot_y)
@@ -552,11 +558,9 @@ class Star(object):
                         ])
 
                         ellipse_axes = np.array([
-                            np.squeeze(spot_radii[i, 0] *
-                                       np.sqrt(1 - r_spot ** 2)),
-                            np.squeeze(spot_radii[i, 0])
+                            spot_radii[:, i] * np.sqrt(1 - r_spot ** 2),
+                            spot_radii[:, i]
                         ])
-
                         spot = ellipse(ellipse_centroid, ellipse_axes,
                                        np.degrees(angle))
 
@@ -573,7 +577,6 @@ class Star(object):
                         # Compute the overlap between each spot and the
                         # planet using shapely's `intersection` method
                         spot_planet_overlap = planet_disk_i.intersection(spots[j]).area
-
                         intersections[j] = ((1 - self.spot_contrast) /
                                             spot_ld_factors[j] *
                                             spot_planet_overlap /
@@ -626,22 +629,26 @@ class Star(object):
         ax : `~matplotlib.pyplot.Axes`
             Axis object.
         """
+        # in case these inputs are not 2D, make them so:
+        spot_lons, spot_lats, spot_radii = [
+            np.atleast_2d(arr)
+            for arr in [spot_lons, spot_lats, spot_radii]
+        ]
         tilted_spots = self.spherical_to_cartesian(spot_lons, spot_lats,
                                                    inc_stellar,
                                                    times=np.array([time]),
                                                    planet=planet,
                                                    time_ref=time_ref)
         spots = []
-
-        for i in range(len(spot_lons)):
+        for i in range(spot_lons.shape[1]):
             # If the spot is visible (x > 0):
-            if tilted_spots.x.value[0, i] > 0:
-                spot_y = tilted_spots.y.value[0, i]
-                spot_z = tilted_spots.z.value[0, i]
+            if tilted_spots.x.value[0, 0, i] > 0:
+                spot_y = tilted_spots.y.value[0, 0, i]
+                spot_z = tilted_spots.z.value[0, 0, i]
 
                 # Compute the spot position and ellipsoidal shape
-                r_spot = np.hypot(spot_z, spot_y)[0]
-                angle = np.arctan2(spot_z, spot_y)[0]
+                r_spot = np.hypot(spot_z, spot_y)
+                angle = np.arctan2(spot_z, spot_y)
 
                 ellipse_centroid = np.array([
                     np.squeeze(spot_y),
@@ -649,9 +656,9 @@ class Star(object):
                 ])
 
                 ellipse_axes = np.array([
-                    np.squeeze(spot_radii[i, 0] *
+                    np.squeeze(spot_radii[0, i] *
                                np.sqrt(1 - r_spot ** 2)),
-                    np.squeeze(spot_radii[i, 0])
+                    np.squeeze(spot_radii[0, i])
                 ])
 
                 spot = ellipse(ellipse_centroid, ellipse_axes,
@@ -676,8 +683,8 @@ class Star(object):
                 planet_lower_extent = -b-p.rp
                 planet_upper_extent = -b+p.rp
 
-                ax.axhline(planet_lower_extent, color=color, ls='--')
-                ax.axhline(planet_upper_extent, color=color, ls='--')
+                ax.axhline(planet_lower_extent, color=color, ls='--', lw=0.75)
+                ax.axhline(planet_upper_extent, color=color, ls='--', lw=0.75)
         elif hasattr(planet, 'a'):
             # Calculate impact parameter
             b = (planet.a * np.cos(np.radians(planet.inc)) * (1 - planet.ecc**2) /
@@ -688,17 +695,29 @@ class Star(object):
             planet_lower_extent = -b-planet.rp
             planet_upper_extent = -b+planet.rp
 
-            ax.axhline(planet_lower_extent, color='gray', ls='--')
-            ax.axhline(planet_upper_extent, color='gray', ls='--')
+            ax.axhline(planet_lower_extent, color='gray', ls='--', lw=0.75)
+            ax.axhline(planet_upper_extent, color='gray', ls='--', lw=0.75)
 
         # Compute the position of the rotational pole of the star
-        pole_lat, pole_lon = np.array([90])*u.deg, np.array([0])*u.deg
-        polar_spot = self.spherical_to_cartesian(pole_lon, pole_lat,
-                                                 inc_stellar,
-                                                 times=np.array([0]),
-                                                 planet=planet)
+        north_pole_lon, north_pole_lat = np.array([0])*u.deg, np.array([90])*u.deg
+        north_polar_spot = self.spherical_to_cartesian(
+            north_pole_lon,
+            north_pole_lat,
+            inc_stellar,
+            times=np.array([0]),
+            planet=planet
+        )
 
-        equator_lon = np.linspace(0, 2*np.pi, 50) * u.rad
+        south_pole_lon, south_pole_lat = np.array([0])*u.deg, np.array([-90])*u.deg
+        south_polar_spot = self.spherical_to_cartesian(
+            south_pole_lon,
+            south_pole_lat,
+            inc_stellar,
+            times=np.array([0]),
+            planet=planet
+        )
+
+        equator_lon = np.linspace(0, 2*np.pi, 100) * u.rad
         equator_lat = np.zeros(len(equator_lon)) * u.rad
         equatorial_line = self.spherical_to_cartesian(equator_lon, equator_lat,
                                                       inc_stellar,
@@ -710,19 +729,21 @@ class Star(object):
         ax.plot(x, np.sqrt(1-x**2), color='k')
         ax.plot(x, -np.sqrt(1-x**2), color='k')
 
-        # If pole is visible, mark it:
-        if polar_spot.x > 0:
-            ax.scatter(polar_spot.y, polar_spot.z, color='k', marker='x')
+        # If north pole is visible, mark it:
+        if north_polar_spot.x > 0:
+            ax.scatter(north_polar_spot.y, north_polar_spot.z, color='k', marker='x')
+
+        # If south pole is visible, mark it:
+        if south_polar_spot.x > 0:
+            ax.scatter(south_polar_spot.y, south_polar_spot.z, color='dodgerblue', marker='+')
 
         # Where equator is visible, mark it:
-        equator_visible = equatorial_line.x > 0
-        equator_xy = np.vstack([equatorial_line.y[equator_visible],
-                                equatorial_line.z[equator_visible]]).T
-        sort_equator = sort_plot_points(equator_xy,
-                                        k0=np.argmax(equator_xy[:, 1]))
-        ax.plot(equatorial_line.y[equator_visible][sort_equator],
-                equatorial_line.z[equator_visible][sort_equator],
-                ls=':', color='gray')
+        equator_visible = equatorial_line.x >= 0
+        ax.scatter(
+            equatorial_line.y[equator_visible],
+            equatorial_line.z[equator_visible],
+            marker='s', color='gray', s=1, zorder=-10
+        )
 
         ax.set(ylim=[-1.01, 1.01], xlim=[-1.01, 1.01], aspect=1)
 
@@ -731,7 +752,7 @@ class Star(object):
             spot_x, spot_y = [np.array(j.tolist())
                               for j in spots[i].exterior.xy]
             ax.fill(spot_x, spot_y, alpha=1-self.spot_contrast,
-                    color='k')
+                    color='k', zorder=10)
         return ax
 
 

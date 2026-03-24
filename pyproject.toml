@@ -7,10 +7,9 @@ license = { file = "LICENSE", content-type = "text/plain" }
 authors = [
   { name = "Brett Morris", email = "morrisbrettm@gmail.com" },
 ]
-# require numpy < 2 until batman supports 2.x+
 dependencies = [
   "astropy",
-  "numpy<2",
+  "numpy",
   "scipy",
   "shapely",
   "matplotlib"
@@ -22,7 +21,8 @@ test = [
     "pytest-doctestplus",
     'pytest >=4.6.0',
     'pytest-astropy',
-    "batman-package"
+    'batman-package',
+    'setuptools'
 ]
 docs = [
     "sphinx",
@@ -40,8 +40,9 @@ docs = [
     "corner",
 ]
 jax = [
-    "jaxoplanet == 0.0.4",
+    "jaxoplanet",
     "specutils",
+    "equinox"
 ]
 
 [project.urls]

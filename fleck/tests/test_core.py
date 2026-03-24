@@ -1,117 +1,132 @@
-import numpy as np
 import os
-import astropy.units as u
 import pytest
+from collections import namedtuple
 
-from ..core import Star
+from batman import TransitParams
+import numpy as np
+import astropy.units as u
 
-
-@pytest.mark.parametrize("fast,", [
-    ("True", ),
-    ("False", ),
-])
-def test_stsp_rotational_modulation(fast):
-    """
-    Compare fleck results to STSP results
-    """
-    stsp_lc = np.loadtxt(os.path.join(os.path.dirname(__file__), os.pardir,
-                                      'data', 'stsp_rotation.txt'))
-
-    n_phases = 1000
-    spot_contrast = 0.7
-    u_ld = [0.5079, 0.2239]
-    inc_stellar = 90
-
-    lat1, lon1, rad1 = 10, 0, 0.1
-    lat2, lon2, rad2 = 75, 180, 0.1
-
-    lats = np.array([lat1, lat2])[:, np.newaxis]
-    lons = np.array([lon1, lon2])[:, np.newaxis]
-    rads = np.array([rad1, rad2])[:, np.newaxis]
-
-    star = Star(spot_contrast, u_ld, n_phases=n_phases)
-    fleck_lc = star.light_curve(lons * u.deg, lats * u.deg, rads,
-                                inc_stellar * u.deg, fast=fast)
-
-    # Assert matches STSP results to within 100 ppm:
-    np.testing.assert_allclose(fleck_lc[:, 0], stsp_lc, atol=100e-6)
+from fleck.core import Star
+from fleck.tests.stsp import STSP
 
 
-@pytest.mark.parametrize("fast,", [
-    ("True", ),
-    ("False", ),
-])
-def test_stsp_transit(fast):
-    from batman import TransitParams
+p = TransitParams()
+p.per = 1.5
+p.a = 15
+p.t0 = 0
+p.rp = 0.05
+p.u = [0.1, 0.05]
+p.limb_dark = 'quadratic'
+p.w = 90
+p.ecc = 0
 
-    planet = TransitParams()
-    planet.per = 88
-    planet.a = float(0.387*u.AU / u.R_sun)
-    planet.rp = 0.1
-    planet.w = 90
-    planet.ecc = 0
-    planet.inc = 90
-    planet.t0 = 0
-    planet.limb_dark = 'quadratic'
-    planet.u = [0.5079, 0.2239]
+# stellar params:
+p.per_rot = 5
+contrast = 0.2
 
-    stsp_lc = np.loadtxt(os.path.join(os.path.dirname(__file__), os.pardir,
-                                      'data', 'stsp_single_transit.txt'))
+test_times = np.linspace(-0.05, 0.05, 500)
 
-    inc_stellar = 90 * u.deg
-    spot_radii = np.array([[0.1], [0.1]])
-    spot_lats = np.array([[0], [0]]) * u.deg
-    spot_lons = np.array([[360-30], [30]]) * u.deg
+# spot_params order: [r, theta, phi]
+system_configurations = [
 
-    times = np.linspace(-0.5, 0.5, 500)
+    # columns: i_s, i_orb, lambda, OOT max, and
+    # spot [r, theta, phi] int STSP coord convention:
 
-    star = Star(spot_contrast=0.7, u_ld=planet.u, rotation_period=100)
+    # with stellar inclination 85 deg, b=0:
+    # vary projected spin-orbit angle and spot positions
+    (85, 90, 0, 1, [0.05, np.pi/2, 0]),
+    (85, 90, 30, 1, [0.05, 1.15 * np.pi/2, 2 * np.pi - 0.5]),
+    (85, 90, 30, 1, [0.05, 0.8 * np.pi/2, 0.5 + 0.03]),
+    (85, 90, 90, 1, [0.05, np.pi/4, 0]),
+    (85, 90, 270, 1, [0.05, 3 * np.pi/4, 0]),
 
-    fleck_lc = star.light_curve(spot_lons, spot_lats, spot_radii,
-                                inc_stellar, planet=planet, times=times,
-                                fast=fast, time_ref=0)
+    # with stellar inclination 120 deg, b=0.4:
+    # vary projected spin-orbit angle and spot positions
+    (120, 88.5, -30, 1, [0.03, 0.55 * np.pi, 2*np.pi - 1.1]),
+    (200, 88.5, 200, 1, [0.05, 0.55 * np.pi, 2*np.pi - 0.45]),
 
-    # Assert matches STSP results to within 350 ppm:
-    np.testing.assert_allclose(fleck_lc[:, 0], stsp_lc, atol=350e-6)
+    # with stellar inclination {0, 180} deg, b=0.1, check that STSP's
+    # "real maximum" parameter brings the STSP model into
+    # agreement with fleck's default output.
+    (0, 89.6, 0, 0.9992497284217082, [0.03, 0.05, 0.05]),
+    (180, 89.6, 45, 0.9992497284217082, [0.03, np.pi - 0.05, 0.9 * np.pi]),
+
+    # with stellar inclination {0, 180} deg, b={0.1, 0.4}:
+    # vary projected spin-orbit angle and spot positions
+    (0, 89.6, 0, 0.9992497284217082, [0.03, 0.05, 0.05]),
+    (180, 89.6, 45, 0.9939219210476027,
+     [[0.04, 0.7 * np.pi, 0.3 * np.pi], [0.08, np.pi - 0.06, 2.5]]),
+    (180, 89.6, 90, 0.9939219210476027,
+     [[0.04, 0.7 * np.pi, 3.03], [0.08, np.pi - 0.06, 2.5]]),
+    (0, 89.6, 90, 0.9939219210476027,
+     [[0.04, 0.3 * np.pi, 3.03], [0.08, 0.06, 2.5]]),
+    (0, 88.5, 100, 0.998567636449246,
+     [[0.04, 0.3 * np.pi, 0.2 * np.pi], [0.03, 0.4, 0.4 * np.pi]]),
+]
 
 
-@pytest.mark.parametrize("fast,", [
-    ("True", ),
-    ("False", ),
-])
-def test_stsp_double_transit(fast):
-    from batman import TransitParams
+def generate_stsp_light_curves():
+    # run this manually to recreate the test light curve files
+    LightCurve = namedtuple('LightCurve', 'times')
+    JD = namedtuple('JD', 'jd')
 
-    planet = TransitParams()
-    planet.per = 88
-    planet.a = float(0.387*u.AU / u.R_sun)
-    planet.rp = 0.1
-    planet.w = 90
-    planet.ecc = 0
-    planet.inc = 90
-    planet.t0 = 0
-    planet.limb_dark = 'quadratic'
-    planet.u = [0.5079, 0.2239]
+    for i, config in enumerate(system_configurations):
+        inc_stellar, inc, lam, real_max, spot_params = config
+        p.lam = lam
+        p.inc_stellar = inc_stellar
+        p.inc = inc
+        lc = LightCurve(times=JD(test_times))
+        sim = STSP(lc, transit_params=p, spot_params=spot_params)
+        _, flux_stsp = sim.stsp_lc(
+            contrast=contrast,
+            n_ld_rings=100,
+            real_max=real_max,
+            verbose=False
+        )
+        path = os.path.join(
+            os.path.dirname(__file__),
+            os.pardir,
+            'data',
+            f'stsp_{i:02d}.txt'
+        )
+        np.savetxt(path, flux_stsp)
 
-    stsp_lc = np.loadtxt(os.path.join(os.path.dirname(__file__), os.pardir,
-                                      'data', 'stsp_double_transit.txt'))
 
-    inc_stellar = 90 * u.deg
-    spot_radii = np.array([[0.05], [0.05]])
-    spot_lats = np.array([[0], [0]]) * u.deg
-    spot_lons = np.array([[360-30], [30]]) * u.deg
+@pytest.mark.parametrize(
+    "i, config,",
+    enumerate(system_configurations)
+)
+def test_fleck_against_stsp(i, config):
+    inc_stellar, inc, lam, _, spot_params = config
+    p.lam = lam
+    p.inc_stellar = inc_stellar
+    p.inc = inc
+    star = Star(contrast, p.u, rotation_period=p.per_rot)
+    spot_params = np.atleast_2d(spot_params)
+    fleck_lon, fleck_lat, fleck_rad = [
+        spot_params[:, 2] * u.rad,
+        # convert colatitude to latitude:
+        (np.pi/2 - spot_params[:, 1]) * u.rad,
+        spot_params[:, 0]
+    ]
+    flux_fleck = star.light_curve(
+        fleck_lon, fleck_lat, fleck_rad,
+        inc_stellar=p.inc_stellar * u.deg,
+        times=test_times,
+        planet=p,
+        time_ref=0.0
+    ).ravel()
 
-    times = np.concatenate([np.linspace(-0.5, 0.5, 500),
-                            np.linspace(87.5, 88.5, 500)])
+    path = os.path.join(
+        os.path.dirname(__file__),
+        os.pardir,
+        'data',
+        f'stsp_{i:02d}.txt'
+    )
+    flux_stsp = np.loadtxt(path)
 
-    star = Star(spot_contrast=0.7, u_ld=planet.u, rotation_period=10)
-
-    fleck_lc = star.light_curve(spot_lons, spot_lats, spot_radii,
-                                inc_stellar, planet=planet, times=times,
-                                fast=fast, time_ref=0)
-
-    # Assert matches STSP results to within 1 ppt:
-    np.testing.assert_allclose(fleck_lc[:, 0], stsp_lc, atol=1e-3)
+    # absolute agreement of 80 ppm
+    np.testing.assert_allclose(flux_fleck, flux_stsp, atol=80e-6)
 
 
 def test_flux_decrement():
@@ -138,3 +153,14 @@ def test_flux_decrement():
 
     # Ensure that the maximum flux is unity:
     assert fleck_lc.max() == 1.0
+
+
+if __name__ == '__main__':
+    """
+    To re-generate STSP light curves for the tests, clone
+    https://github.com/lesliehebb/STSP and compile the executable.
+    Then add an env var $STSP_PATH to your .bashrc which points to the
+    executable, and run this python script by calling:
+         python fleck/tests/test_core.py
+    """
+    generate_stsp_light_curves()
