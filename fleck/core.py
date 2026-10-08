@@ -437,8 +437,8 @@ class Star(object):
             for i in range(n_spots):
                 # If the spot is visible (x > 0):
                 if tilted_spots.x.value[t0_ind, i] > 0:
-                    spot_y = tilted_spots.y.value[t0_ind, i]
-                    spot_z = tilted_spots.z.value[t0_ind, i]
+                    spot_y = tilted_spots.y.value[t0_ind, i].item()
+                    spot_z = tilted_spots.z.value[t0_ind, i].item()
 
                     # Compute the spot position and ellipsoidal shape
                     r_spot = np.hypot(spot_z, spot_y)
@@ -464,7 +464,7 @@ class Star(object):
 
             # If any spots are visible:
             if len(spots) > 0:
-                intersections = np.zeros((transit_inds.ptp()+1, len(spots)))
+                intersections = np.zeros((np.ptp(transit_inds)+1, len(spots)))
 
                 # For each time when the planet is nearly transiting:
                 for i in range(len(transit_inds)):
@@ -533,8 +533,8 @@ class Star(object):
                 for i in range(n_spots):
                     # If the spot is visible (x > 0):
                     if tilted_spots.x.value[k, i] > 0:
-                        spot_y = tilted_spots.y.value[k, i]
-                        spot_z = tilted_spots.z.value[k, i]
+                        spot_y = tilted_spots.y.value[k, i].item()
+                        spot_z = tilted_spots.z.value[k, i].item()
 
                         # Compute the spot position and ellipsoidal shape
                         r_spot = np.hypot(spot_z, spot_y)
@@ -629,8 +629,8 @@ class Star(object):
         for i in range(len(spot_lons)):
             # If the spot is visible (x > 0):
             if tilted_spots.x.value[0, i] > 0:
-                spot_y = tilted_spots.y.value[0, i]
-                spot_z = tilted_spots.z.value[0, i]
+                spot_y = tilted_spots.y.value[0, i].item()
+                spot_z = tilted_spots.z.value[0, i].item()
 
                 # Compute the spot position and ellipsoidal shape
                 r_spot = np.hypot(spot_z, spot_y)
