@@ -55,6 +55,7 @@ distribute-*.tar.gz
 .project
 .pydevproject
 .settings
+settings.json
 
 docs/.DS_Store
 .DS_Store

@@ -278,6 +278,19 @@ class Star(object):
                             np.cos(Omega) * np.sin(omega + f) * np.cos(I))
             Z = planet.a * np.sin(omega + f) * np.sin(I)
 
+            # Enforce that the transit chord lies below the stellar equator
+            # in the same "observer oriented" frame used for the spots/plot.
+            in_front = (X < 0) & (np.abs(Y) < 1 + planet.rp)
+            if np.any(in_front):
+                idx = np.where(in_front)[0]
+                # approximate mid-transit as the in-front point with minimum |Y|
+                mid_idx = idx[np.argmin(np.abs(Y[in_front]))]
+                z_star_mid = -Z[mid_idx]
+                if z_star_mid > 0:
+                    # Planet is crossing the lat > 0 hemisphere; reflect it
+                    # across the equator so it crosses lat < 0 instead.
+                    Z = -Z
+
             # Create a shapely circle object for the planet's silhouette only
             # when the planet is in front of the star, otherwise append `None`
             planet_disk = [circle([-Y[i], -Z[i]], planet.rp)

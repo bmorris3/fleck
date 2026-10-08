@@ -201,12 +201,22 @@ that we will observe, the stellar inclination, and spectrum of the stellar photo
 
 We can add active regions to the star with `~fleck.jax.ActiveStar.add_spot`
 
+Spot latitudes are signed angles in radians, from ``-pi/2`` to ``pi/2``;
+zero is the stellar equator. To convert a colatitude, use
+``latitude = pi/2 - colatitude``.
+
+Instead of a spectrum, you can provide a scalar or wavelength-dependent
+``contrast`` to ``add_spot``. A contrast below one describes a dark spot;
+a contrast above one describes a bright region. Supplying only ``temperature``
+uses a blackbody spot spectrum. If no photospheric spectrum is provided,
+``T_eff`` and the wavelength grid define a blackbody photosphere.
+
 .. code-block:: python
 
     # add a cool spot:
     active_star.add_spot(
         lon=-0.2,  # [rad]
-        lat=1.65,  # [rad]
+        lat=np.pi/2 - 1.65,  # signed latitude [rad]
         rad=0.15,  # [R_star]
         spectrum=cool.flux.value,
         temperature=cool.meta['PHXTEFF']
@@ -215,7 +225,7 @@ We can add active regions to the star with `~fleck.jax.ActiveStar.add_spot`
     # add a hot spot:
     active_star.add_spot(
         lon=0.95,
-        lat=1.75,
+        lat=np.pi/2 - 1.75,
         rad=0.08,
         spectrum=hot.flux.value,
         temperature=hot.meta['PHXTEFF']
@@ -376,7 +386,7 @@ code cell above, makes a lot of plotting calls to visualize the results of
     # add a cool spot:
     active_star.add_spot(
         lon=-0.2,  # [rad]
-        lat=1.65,  # [rad]
+        lat=np.pi/2 - 1.65,  # signed latitude [rad]
         rad=0.15,  # [R_star]
         spectrum=cool.flux.value,
         temperature=cool.meta['PHXTEFF']
@@ -385,7 +395,7 @@ code cell above, makes a lot of plotting calls to visualize the results of
     # add a hot spot:
     active_star.add_spot(
         lon=0.95,
-        lat=1.75,
+        lat=np.pi/2 - 1.75,
         rad=0.08,
         spectrum=hot.flux.value,
         temperature=hot.meta['PHXTEFF']
